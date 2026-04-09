@@ -1,0 +1,46 @@
+node_modules
+
+ios/
+__tests__/
+
+# 환경변수 (Supabase 키 등)
+.env
+.env.local
+.env*.local
+
+# macOS 시스템 파일
+.DS_Store
+**/.DS_Store
+
+# IDE 파일
+*.code-workspace
+
+# 백업 파일
+*_bak.js
+*_bak.ts
+
+# Android 빌드 산출물만 제외 (소스코드는 추적)
+android/.gradle/
+android/app/build/
+android/build/
+android/release/
+android/.idea/
+
+# JS 번들
+android/app/src/main/assets/index.android.bundle
+android/app/src/main/assets/*.map
+
+# keystore 및 인증서
+android/app/upload.keystore
+android/app/release.keystore
+android/app/debug.keystore
+*.pem
+
+# Firebase 설정 (API 키 포함)
+android/app/google-services.json
+
+# 로컬 개발 환경 설정
+android/local.properties
+
+# 릴리즈 빌드 산출물
+android/app/release/
