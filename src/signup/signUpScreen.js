@@ -122,17 +122,17 @@
     );
   }
 
-  const onDemoLogin = async () => {
-    setLoading(true);
-    try {
-      await logIn({ email: 'demo@itemdiary.app', password: 'demo1234!' });
-    } catch (e) {
-      Alert.alert('', '일시적인 오류입니다. 잠시 후 다시 이용해주세요.', [{text: '확인'}]);
-      console.log("error : " + e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // const onDemoLogin = async () => {
+  //   setLoading(true);
+  //   try {
+  //     await logIn({ email: '', password: '' });
+  //   } catch (e) {
+  //     Alert.alert('', '일시적인 오류입니다. 잠시 후 다시 이용해주세요.', [{text: '확인'}]);
+  //     console.log("error : " + e);
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
  return(
     <KeyboardAvoidingView
@@ -161,9 +161,9 @@
                 <Text style={styles.dividerText}>또는</Text>
                 <View style={styles.dividerLine} />
               </View>
-              <TouchableOpacity style={styles.demoButton} onPress={onDemoLogin} disabled={loading}>
+              {/* <TouchableOpacity style={styles.demoButton} onPress={onDemoLogin} disabled={loading}>
                 <Text style={styles.demoButtonText}>데모 계정으로 체험하기</Text>
-              </TouchableOpacity>
+              </TouchableOpacity> */}
             </>
           )}
         </View>

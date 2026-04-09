@@ -1,74 +1,79 @@
-import React, {useState, useCallback, useEffect} from 'react';
+import React, {useState, useEffect, useCallback} from 'react';
 import {
   View,
-  TextInput,
   FlatList,
+  Text,
   StyleSheet,
   SafeAreaView,
-  Pressable,
-  Text,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/Ionicons';
+import {Calendar, LocaleConfig} from 'react-native-calendars';
+import {useIsFocused} from '@react-navigation/native';
 import {colors} from '../../constants/colors';
 import {typography} from '../../constants/typography';
-import {spacing, radius} from '../../constants/spacing';
-import {useItems} from '../../hooks/useItems';
+import {spacing} from '../../constants/spacing';
+import {useCalendarItems} from '../../hooks/useCalendarItems';
 import {useCategories} from '../../hooks/useCategories';
-import {CategoryChips} from '../../components/CategoryChips';
 import {ItemCard} from '../../components/ItemCard';
-import {EmptyState} from '../../components/ui/EmptyState';
 import {LoadingOverlay} from '../../components/ui/LoadingOverlay';
 
-const SORT_OPTIONS = [
-  {key: 'created_at', label: '최신순', asc: false},
-  {key: 'item_date', label: '구입날짜순', asc: false},
-  {key: 'price', label: '가격순', asc: false},
-  {key: 'name', label: '이름순', asc: true},
-];
+LocaleConfig.locales['ko'] = {
+  monthNames: ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'],
+  monthNamesShort: ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'],
+  dayNames: ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'],
+  dayNamesShort: ['일', '월', '화', '수', '목', '금', '토'],
+  today: '오늘',
+};
+LocaleConfig.defaultLocale = 'ko';
 
-function SearchScreen({navigation}) {
-  const {items, loading, fetchItems, fetchMore} = useItems();
-  const {categories, getCategoryById} = useCategories();
+function CalendarScreen({navigation}) {
+  const isFocused = useIsFocused();
+  const {markedDates, dayItems, monthTotal, loadingDots, loadingDay, fetchMonthDots, fetchDayItems} =
+    useCalendarItems();
+  const {getCategoryById} = useCategories();
 
-  const [searchText, setSearchText] = useState('');
-  const [categoryId, setCategoryId] = useState(null);
-  const [sortIndex, setSortIndex] = useState(0);
-  const [hasSearched, setHasSearched] = useState(true);
-
-  const getOptions = useCallback(
-    (overrides = {}) => {
-      const sort = SORT_OPTIONS[overrides.sortIdx ?? sortIndex];
-      return {
-        sortBy: sort.key,
-        sortAsc: sort.asc,
-        search: overrides.search ?? searchText,
-        categoryId: overrides.catId !== undefined ? overrides.catId : categoryId,
-      };
-    },
-    [searchText, categoryId, sortIndex],
-  );
+  const today = new Date();
+  const [currentYear, setCurrentYear] = useState(today.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(today.getMonth() + 1);
+  const [selectedDate, setSelectedDate] = useState(null);
 
   useEffect(() => {
-    fetchItems(getOptions());
-  }, []);
+    if (isFocused) {
+      fetchMonthDots(currentYear, currentMonth);
+    }
+  }, [isFocused]);
 
-  const doSearch = (overrides = {}) => {
-    setHasSearched(true);
-    fetchItems(getOptions(overrides));
+  const onMonthChange = month => {
+    setCurrentYear(month.year);
+    setCurrentMonth(month.month);
+    setSelectedDate(null);
+    fetchMonthDots(month.year, month.month);
   };
 
-  const onSubmitSearch = () => {
-    doSearch();
+  const onDayPress = day => {
+    setSelectedDate(day.dateString);
+    fetchDayItems(day.dateString);
   };
 
-  const onSelectCategory = id => {
-    setCategoryId(id);
-    doSearch({catId: id});
+  const markedDatesWithSelected = selectedDate
+    ? {
+        ...markedDates,
+        [selectedDate]: {
+          ...(markedDates[selectedDate] || {}),
+          selected: true,
+          selectedColor: colors.primary,
+        },
+      }
+    : markedDates;
+
+  const formatMonthTotal = total => {
+    if (!total) return '₩0';
+    return '₩' + total.toLocaleString('ko-KR');
   };
 
-  const onChangeSort = idx => {
-    setSortIndex(idx);
-    doSearch({sortIdx: idx});
+  const formatSelectedDate = dateString => {
+    if (!dateString) return '';
+    const [, m, d] = dateString.split('-');
+    return `${parseInt(m, 10)}월 ${parseInt(d, 10)}일 구매 아이템`;
   };
 
   const goDetail = item => {
@@ -87,89 +92,77 @@ function SearchScreen({navigation}) {
         />
       );
     },
-    [categories],
+    [],
   );
+
+  const renderHeader = () => (
+    <View>
+      <Calendar
+        current={`${currentYear}-${String(currentMonth).padStart(2, '0')}-01`}
+        onMonthChange={onMonthChange}
+        onDayPress={onDayPress}
+        markedDates={markedDatesWithSelected}
+        renderHeader={date => {
+          const d = new Date(date);
+          const year = d.getFullYear();
+          const month = d.getMonth() + 1;
+          return (
+            <View style={styles.calendarHeader}>
+              <Text style={styles.calendarHeaderTitle}>{year}년 {month}월</Text>
+              <Text style={styles.calendarHeaderTotal}>
+                이달 지출: {formatMonthTotal(monthTotal)}
+              </Text>
+            </View>
+          );
+        }}
+        theme={{
+          backgroundColor: colors.surface,
+          calendarBackground: colors.surface,
+          selectedDayBackgroundColor: colors.primary,
+          selectedDayTextColor: colors.textInverse,
+          todayTextColor: colors.primary,
+          dayTextColor: colors.text,
+          textDisabledColor: colors.textTertiary,
+          dotColor: colors.primary,
+          selectedDotColor: colors.textInverse,
+          arrowColor: colors.primary,
+          monthTextColor: colors.text,
+          indicatorColor: colors.primary,
+        }}
+        style={styles.calendar}
+      />
+
+      {selectedDate && (
+        <View style={styles.dayHeader}>
+          <Text style={styles.dayHeaderText}>{formatSelectedDate(selectedDate)}</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  const emptyText = selectedDate
+    ? '이날 구매한 아이템이 없습니다'
+    : '날짜를 선택하세요';
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 검색바 */}
-      <View style={styles.searchBar}>
-        <Icon name="search-outline" size={20} color={colors.textTertiary} style={{marginRight: spacing.sm}} />
-        <TextInput
-          style={styles.searchInput}
-          value={searchText}
-          onChangeText={setSearchText}
-          placeholder="아이템 이름 검색"
-          placeholderTextColor={colors.textTertiary}
-          returnKeyType="search"
-          onSubmitEditing={onSubmitSearch}
-          autoCapitalize="none"
-        />
-        {searchText.length > 0 && (
-          <Pressable
-            onPress={() => {
-              setSearchText('');
-              doSearch({search: ''});
-            }}>
-            <Icon name="close-circle" size={20} color={colors.textTertiary} />
-          </Pressable>
-        )}
-      </View>
-
-      {/* 카테고리 필터 */}
-      <CategoryChips
-        categories={categories}
-        selectedId={categoryId}
-        onSelect={onSelectCategory}
-        showAll
-      />
-
-      {/* 정렬 */}
-      <View style={styles.sortRow}>
-        {SORT_OPTIONS.map((opt, i) => (
-          <Pressable
-            key={opt.key}
-            onPress={() => onChangeSort(i)}
-            style={[
-              styles.sortChip,
-              sortIndex === i && styles.sortChipActive,
-            ]}>
-            <Text
-              style={[
-                styles.sortText,
-                sortIndex === i && styles.sortTextActive,
-              ]}>
-              {opt.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {/* 결과 */}
       <FlatList
-        data={items}
+        data={selectedDate ? dayItems : []}
         renderItem={renderItem}
         keyExtractor={item => String(item.seq)}
+        ListHeaderComponent={renderHeader}
         ListEmptyComponent={
-          !loading ? (
-            <EmptyState
-              icon="search-outline"
-              title={hasSearched ? '검색 결과가 없습니다' : '아이템을 검색해보세요'}
-              subtitle={
-                hasSearched
-                  ? '다른 키워드나 필터로 검색해보세요'
-                  : '이름, 카테고리로 아이템을 찾을 수 있습니다'
-              }
-            />
+          !loadingDay ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>{emptyText}</Text>
+            </View>
           ) : null
         }
-        contentContainerStyle={items.length === 0 && styles.emptyList}
-        onEndReached={() => fetchMore(getOptions())}
-        onEndReachedThreshold={0.5}
+        contentContainerStyle={styles.listContent}
         style={styles.list}
       />
 
-      {loading && items.length === 0 && <LoadingOverlay />}
+      {(loadingDots || loadingDay) && <LoadingOverlay />}
     </SafeAreaView>
   );
 }
@@ -179,53 +172,48 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    marginHorizontal: spacing.md,
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.lg,
-    height: 44,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  searchInput: {
-    flex: 1,
-    ...typography.body,
-    color: colors.text,
-    padding: 0,
-  },
-  sortRow: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  sortChip: {
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceSecondary,
-    marginRight: spacing.xs,
-  },
-  sortChipActive: {
-    backgroundColor: colors.primary,
-  },
-  sortText: {
-    ...typography.small,
-    color: colors.textSecondary,
-  },
-  sortTextActive: {
-    color: colors.textInverse,
-    fontWeight: '600',
-  },
   list: {
     flex: 1,
   },
-  emptyList: {
+  listContent: {
     flexGrow: 1,
+  },
+  calendar: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  calendarHeader: {
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+  },
+  calendarHeaderTitle: {
+    ...typography.h3,
+    color: colors.text,
+  },
+  calendarHeaderTotal: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  dayHeader: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+    backgroundColor: colors.background,
+  },
+  dayHeaderText: {
+    ...typography.captionBold,
+    color: colors.textSecondary,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    paddingTop: spacing.xl,
+  },
+  emptyText: {
+    ...typography.body,
+    color: colors.textTertiary,
   },
 });
 
-export default SearchScreen;
+export default CalendarScreen;

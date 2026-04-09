@@ -18,8 +18,8 @@ function TabNavigator() {
           let iconName;
           if (route.name === '홈') {
             iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === '검색') {
-            iconName = focused ? 'search' : 'search-outline';
+          } else if (route.name === '캘린더') {
+            iconName = focused ? 'calendar' : 'calendar-outline';
           } else if (route.name === '더보기') {
             iconName = focused ? 'person' : 'person-outline';
           }
@@ -42,9 +42,9 @@ function TabNavigator() {
         options={{title: '아이템 다이어리', headerShown: true, headerTitleStyle: typography.h3}}
       />
       <Tab.Screen
-        name="검색"
+        name="캘린더"
         component={SearchScreen}
-        options={{title: '검색', headerShown: true, headerTitleStyle: typography.h3}}
+        options={{title: '캘린더', headerShown: true, headerTitleStyle: typography.h3}}
       />
       <Tab.Screen
         name="더보기"

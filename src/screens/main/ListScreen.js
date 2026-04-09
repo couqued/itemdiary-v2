@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Pressable,
   Text,
+  TextInput,
   BackHandler,
   ToastAndroid,
   StatusBar,
@@ -19,6 +20,7 @@ import {spacing, radius} from '../../constants/spacing';
 import {useItems} from '../../hooks/useItems';
 import {useCategories} from '../../hooks/useCategories';
 import {ItemCard} from '../../components/ItemCard';
+import {CategoryChips} from '../../components/CategoryChips';
 import {EmptyState} from '../../components/ui/EmptyState';
 import {LoadingOverlay} from '../../components/ui/LoadingOverlay';
 
@@ -37,6 +39,21 @@ function ListScreen({navigation}) {
 
   const [isGrid, setIsGrid] = useState(true);
   const [sortIndex, setSortIndex] = useState(0);
+  const [searchText, setSearchText] = useState('');
+  const [categoryId, setCategoryId] = useState(null);
+
+  const getOptions = useCallback(
+    (overrides = {}) => {
+      const sort = SORT_OPTIONS[overrides.sortIdx !== undefined ? overrides.sortIdx : sortIndex];
+      return {
+        sortBy: sort.key,
+        sortAsc: sort.asc,
+        search: overrides.search !== undefined ? overrides.search : searchText,
+        categoryId: overrides.catId !== undefined ? overrides.catId : categoryId,
+      };
+    },
+    [sortIndex, searchText, categoryId],
+  );
 
   // 레이아웃 모드 복원
   useEffect(() => {
@@ -49,10 +66,9 @@ function ListScreen({navigation}) {
   // 포커스 시 데이터 로드
   useEffect(() => {
     if (isFocused) {
-      const sort = SORT_OPTIONS[sortIndex];
-      fetchItems({sortBy: sort.key, sortAsc: sort.asc});
+      fetchItems(getOptions());
     }
-  }, [isFocused]);
+  }, [isFocused, getOptions]);
 
   // 안드로이드 뒤로가기
   useEffect(() => {
@@ -91,13 +107,25 @@ function ListScreen({navigation}) {
 
   const changeSort = index => {
     setSortIndex(index);
-    const sort = SORT_OPTIONS[index];
-    fetchItems({sortBy: sort.key, sortAsc: sort.asc});
+    fetchItems(getOptions({sortIdx: index}));
+  };
+
+  const onSelectCategory = id => {
+    setCategoryId(id);
+    fetchItems(getOptions({catId: id}));
+  };
+
+  const onSubmitSearch = () => {
+    fetchItems(getOptions());
+  };
+
+  const onClearSearch = () => {
+    setSearchText('');
+    fetchItems(getOptions({search: ''}));
   };
 
   const handleEndReached = () => {
-    const sort = SORT_OPTIONS[sortIndex];
-    fetchMore({sortBy: sort.key, sortAsc: sort.asc});
+    fetchMore(getOptions());
   };
 
   const goDetail = item => {
@@ -109,10 +137,9 @@ function ListScreen({navigation}) {
   };
 
   const renderItem = useCallback(
-    ({item, index}) => {
+    ({item}) => {
       const category = getCategoryById(item.category_id);
       if (isGrid) {
-        // 2열 그리드에서 홀수 개일 때 마지막 아이템 처리
         return (
           <View style={{flex: 1, maxWidth: '50%'}}>
             <ItemCard
@@ -137,33 +164,65 @@ function ListScreen({navigation}) {
   );
 
   const renderHeader = () => (
-    <View style={styles.header}>
-      <View style={styles.sortRow}>
-        {SORT_OPTIONS.map((opt, i) => (
-          <Pressable
-            key={opt.key}
-            onPress={() => changeSort(i)}
-            style={[
-              styles.sortChip,
-              sortIndex === i && styles.sortChipActive,
-            ]}>
-            <Text
-              style={[
-                styles.sortText,
-                sortIndex === i && styles.sortTextActive,
-              ]}>
-              {opt.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-      <Pressable onPress={toggleLayout} style={styles.layoutToggle}>
-        <Icon
-          name={isGrid ? 'list-outline' : 'grid-outline'}
-          size={22}
-          color={colors.textSecondary}
+    <View>
+      {/* 검색창 */}
+      <View style={styles.searchBar}>
+        <Icon name="search-outline" size={20} color={colors.textTertiary} style={{marginRight: spacing.sm}} />
+        <TextInput
+          style={styles.searchInput}
+          value={searchText}
+          onChangeText={setSearchText}
+          placeholder="아이템 이름 검색"
+          placeholderTextColor={colors.textTertiary}
+          returnKeyType="search"
+          onSubmitEditing={onSubmitSearch}
+          autoCapitalize="none"
         />
-      </Pressable>
+        {searchText.length > 0 && (
+          <Pressable onPress={onClearSearch}>
+            <Icon name="close-circle" size={20} color={colors.textTertiary} />
+          </Pressable>
+        )}
+      </View>
+
+      {/* 카테고리 칩 */}
+      <CategoryChips
+        categories={categories}
+        selectedId={categoryId}
+        onSelect={onSelectCategory}
+        showAll
+        compact
+      />
+
+      {/* 정렬 + 레이아웃 토글 */}
+      <View style={styles.sortRow}>
+        <View style={styles.sortChips}>
+          {SORT_OPTIONS.map((opt, i) => (
+            <Pressable
+              key={opt.key}
+              onPress={() => changeSort(i)}
+              style={[
+                styles.sortChip,
+                sortIndex === i && styles.sortChipActive,
+              ]}>
+              <Text
+                style={[
+                  styles.sortText,
+                  sortIndex === i && styles.sortTextActive,
+                ]}>
+                {opt.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Pressable onPress={toggleLayout} style={styles.layoutToggle}>
+          <Icon
+            name={isGrid ? 'list-outline' : 'grid-outline'}
+            size={22}
+            color={colors.textSecondary}
+          />
+        </Pressable>
+      </View>
     </View>
   );
 
@@ -178,10 +237,7 @@ function ListScreen({navigation}) {
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={!loading ? <EmptyState /> : null}
         contentContainerStyle={items.length === 0 && styles.emptyList}
-        onRefresh={() => {
-          const sort = SORT_OPTIONS[sortIndex];
-          refresh({sortBy: sort.key, sortAsc: sort.asc});
-        }}
+        onRefresh={() => refresh(getOptions())}
         refreshing={refreshing}
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.5}
@@ -214,13 +270,31 @@ const styles = StyleSheet.create({
   emptyList: {
     flexGrow: 1,
   },
-  header: {
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.lg,
+    height: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  searchInput: {
+    flex: 1,
+    ...typography.body,
+    color: colors.text,
+    padding: 0,
+  },
+  sortRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingBottom: spacing.sm,
   },
-  sortRow: {
+  sortChips: {
     flex: 1,
     flexDirection: 'row',
   },

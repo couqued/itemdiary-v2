@@ -9,22 +9,25 @@ export function CategoryChips({
   selectedId,
   onSelect,
   showAll = false,
+  compact = false,
 }) {
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.container}>
+      contentContainerStyle={[styles.container, compact && styles.containerCompact]}>
       {showAll && (
         <Pressable
           onPress={() => onSelect(null)}
           style={[
             styles.chip,
+            compact && styles.chipCompact,
             !selectedId && styles.chipActive,
           ]}>
           <Text
             style={[
               styles.chipText,
+              compact && styles.chipTextCompact,
               !selectedId && styles.chipTextActive,
             ]}>
             전체
@@ -39,11 +42,13 @@ export function CategoryChips({
             onPress={() => onSelect(cat.id)}
             style={[
               styles.chip,
+              compact && styles.chipCompact,
               isSelected && {backgroundColor: cat.color},
             ]}>
             <Text
               style={[
                 styles.chipText,
+                compact && styles.chipTextCompact,
                 isSelected && styles.chipTextActive,
               ]}>
               {cat.name}
@@ -60,12 +65,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
+  containerCompact: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
   chip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: radius.full,
     backgroundColor: colors.surfaceSecondary,
     marginRight: spacing.sm,
+  },
+  chipCompact: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    marginRight: spacing.xs,
   },
   chipActive: {
     backgroundColor: colors.primary,
@@ -74,6 +88,9 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  chipTextCompact: {
+    fontSize: 11,
   },
   chipTextActive: {
     color: colors.textInverse,

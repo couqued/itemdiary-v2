@@ -1,5 +1,7 @@
-apply plugin: "com.android.application"
-apply plugin: "com.facebook.react"
+plugins {
+    id "com.android.application"
+    id "com.facebook.react"
+}
 apply from: project(':react-native-config').projectDir.getPath() + "/dotenv.gradle"
 
 /**
@@ -7,6 +9,8 @@ apply from: project(':react-native-config').projectDir.getPath() + "/dotenv.grad
  * By default you don't need to apply any configuration, just uncomment the lines you need.
  */
 react {
+    autolinkLibrariesWithApp()
+
     /* Folders */
     //   The root of your project, i.e. where "package.json" lives. Default is '..'
     // root = file("../")

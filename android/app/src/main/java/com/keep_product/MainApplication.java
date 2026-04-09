@@ -1,6 +1,7 @@
 package com.keep_product;
 
 import android.app.Application;
+import com.openended.keep_product.BuildConfig;
 import com.facebook.react.PackageList;
 import com.facebook.react.ReactApplication;
 import com.facebook.react.ReactHost;
