@@ -44,3 +44,12 @@ android/local.properties
 
 # 릴리즈 빌드 산출물
 android/app/release/
+
+# Claude Code 설정
+.claude/
+
+# Android CMake 빌드 캐시
+android/app/.cxx/
+
+# 패치 파일
+patches/

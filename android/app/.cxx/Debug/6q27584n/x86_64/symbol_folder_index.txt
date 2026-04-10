@@ -1,1 +1,0 @@
-/Users/chan/PROJECT/itemdiary/android/app/build/intermediates/cxx/Debug/6q27584n/obj/x86_64
