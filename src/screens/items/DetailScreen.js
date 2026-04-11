@@ -7,9 +7,12 @@ import {
   ScrollView,
   Pressable,
   Linking,
+  Dimensions,
+  Modal,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/Ionicons';
+import Ionicons from 'react-native-vector-icons/dist/Ionicons';
 import {colors} from '../../constants/colors';
 import {typography} from '../../constants/typography';
 import {spacing, radius} from '../../constants/spacing';
@@ -29,6 +32,7 @@ function DetailScreen({navigation, route}) {
   const category = getCategoryById(item.category_id);
   const [loading, setLoading] = useState(false);
   const [deleteVisible, setDeleteVisible] = useState(false);
+  const [imageModalVisible, setImageModalVisible] = useState(false);
 
   const onDeleteConfirm = async () => {
     setDeleteVisible(false);
@@ -40,7 +44,7 @@ function DetailScreen({navigation, route}) {
     setLoading(false);
 
     if (error) {
-      // 에러 알림은 간단하게 처리하거나 추가 CustomAlert 필요
+      Alert.alert('', '삭제에 실패하였습니다.');
       return;
     }
     navigation.goBack();
@@ -53,17 +57,16 @@ function DetailScreen({navigation, route}) {
   const onOpenLink = () => {
     if (item.link) {
       Linking.openURL(item.link).catch(() => {
-        // 링크 오류 알림
+        Alert.alert('', '링크를 열 수 없습니다.');
       });
     }
   };
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} style={styles.headerBtn}>
-          <Icon name="chevron-back" size={28} color={colors.text} />
+          <Ionicons name="chevron-back" size={28} color={colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>상세정보</Text>
         <Pressable onPress={onEdit} style={styles.headerBtn}>
@@ -72,20 +75,43 @@ function DetailScreen({navigation, route}) {
       </View>
 
       <ScrollView style={styles.scroll}>
-        {/* 이미지 */}
         {item.image_url ? (
-          <Image
-            source={{uri: item.image_url}}
-            style={styles.image}
-            resizeMode="cover"
-          />
+          <Pressable onPress={() => setImageModalVisible(true)}>
+            <Image
+              source={{uri: item.image_url}}
+              style={styles.image}
+              resizeMode="cover"
+            />
+          </Pressable>
         ) : (
           <View style={styles.imagePlaceholder}>
-            <Icon name="image-outline" size={48} color={colors.textTertiary} />
+            <Ionicons name="image-outline" size={48} color={colors.textTertiary} />
           </View>
         )}
 
-        {/* 정보 */}
+        <Modal
+          visible={imageModalVisible}
+          transparent={false}
+          animationType="fade"
+          onRequestClose={() => setImageModalVisible(false)}>
+          <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Pressable
+                onPress={() => setImageModalVisible(false)}
+                style={styles.closeBtn}>
+                <Ionicons name="close" size={30} color={colors.textInverse} />
+              </Pressable>
+            </View>
+            <View style={styles.modalImageWrapper}>
+              <Image
+                source={{uri: item.image_url}}
+                style={styles.modalImage}
+                resizeMode="contain"
+              />
+            </View>
+          </SafeAreaView>
+        </Modal>
+
         <View style={styles.content}>
           <View style={styles.titleRow}>
             <Text style={styles.itemTitle}>{item.name}</Text>
@@ -115,7 +141,6 @@ function DetailScreen({navigation, route}) {
         </View>
       </ScrollView>
 
-      {/* 하단 액션 바 */}
       <View style={styles.actionBar}>
         <Pressable
           onPress={() => setDeleteVisible(true)}
@@ -124,7 +149,7 @@ function DetailScreen({navigation, route}) {
             styles.deleteBtn,
             pressed && {opacity: 0.8},
           ]}>
-          <Icon name="trash-outline" size={20} color={colors.danger} style={{marginRight: spacing.sm}} />
+          <Ionicons name="trash-outline" size={20} color={colors.danger} style={{marginRight: spacing.sm}} />
           <Text style={styles.deleteBtnText}>삭제하기</Text>
         </Pressable>
       </View>
@@ -149,7 +174,7 @@ function InfoRow({icon, label, value, valueStyle}) {
   return (
     <View style={styles.infoRow}>
       <View style={styles.infoLabel}>
-        <Icon name={icon} size={18} color={colors.textSecondary} style={{marginRight: spacing.sm}} />
+        <Ionicons name={icon} size={18} color={colors.textSecondary} style={{marginRight: spacing.sm}} />
         <Text style={styles.infoLabelText}>{label}</Text>
       </View>
       <Text style={[styles.infoValue, valueStyle]} numberOfLines={3}>
@@ -190,6 +215,7 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: 300,
+    backgroundColor: colors.surfaceSecondary,
   },
   imagePlaceholder: {
     width: '100%',
@@ -256,6 +282,27 @@ const styles = StyleSheet.create({
   deleteBtnText: {
     ...typography.captionBold,
     color: colors.danger,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    padding: spacing.md,
+  },
+  closeBtn: {
+    padding: spacing.sm,
+  },
+  modalImageWrapper: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalImage: {
+    width: '100%',
+    height: '100%',
   },
 });
 

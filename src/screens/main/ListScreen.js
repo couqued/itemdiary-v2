@@ -1,4 +1,5 @@
 import React, {useState, useEffect, useCallback} from 'react';
+import debounce from 'lodash.debounce';
 import {
   View,
   FlatList,
@@ -13,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {useIsFocused} from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Icon from 'react-native-vector-icons/Ionicons';
+import Ionicons from 'react-native-vector-icons/dist/Ionicons';
 import {colors} from '../../constants/colors';
 import {typography} from '../../constants/typography';
 import {spacing, radius} from '../../constants/spacing';
@@ -52,10 +53,32 @@ function ListScreen({navigation}) {
         categoryId: overrides.catId !== undefined ? overrides.catId : categoryId,
       };
     },
-    [sortIndex, searchText, categoryId],
+    [sortIndex, categoryId], // searchText를 제거하여 함수 신원 유지
   );
 
-  // 레이아웃 모드 복원
+  const debouncedSearch = useCallback(
+    debounce(text => {
+      fetchItems(getOptions({search: text}));
+    }, 300),
+    [fetchItems, getOptions],
+  );
+
+  useEffect(() => {
+    return () => {
+      debouncedSearch.cancel();
+    };
+  }, [debouncedSearch]);
+
+  const handleSearchChange = text => {
+    setSearchText(text);
+    debouncedSearch(text);
+  };
+
+  const onSubmitSearch = () => {
+    debouncedSearch.cancel();
+    fetchItems(getOptions({search: searchText}));
+  };
+
   useEffect(() => {
     StatusBar.setBarStyle('dark-content');
     AsyncStorage.getItem('listLayout').then(val => {
@@ -63,14 +86,12 @@ function ListScreen({navigation}) {
     });
   }, []);
 
-  // 포커스 시 데이터 로드
   useEffect(() => {
     if (isFocused) {
-      fetchItems(getOptions());
+      fetchItems(getOptions({search: searchText}));
     }
   }, [isFocused]);
 
-  // 안드로이드 뒤로가기
   useEffect(() => {
     let isExitApp = false;
     let timeout;
@@ -115,12 +136,9 @@ function ListScreen({navigation}) {
     fetchItems(getOptions({catId: id}));
   };
 
-  const onSubmitSearch = () => {
-    fetchItems(getOptions());
-  };
-
   const onClearSearch = () => {
     setSearchText('');
+    debouncedSearch.cancel();
     fetchItems(getOptions({search: ''}));
   };
 
@@ -160,78 +178,74 @@ function ListScreen({navigation}) {
         />
       );
     },
-    [isGrid, categories],
+    [isGrid, categories, getCategoryById],
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
+      <View style={styles.stickyHeader}>
+        <View style={styles.searchBar}>
+          <Ionicons name="search-outline" size={20} color={colors.textTertiary} style={{marginRight: spacing.sm}} />
+          <TextInput
+            style={styles.searchInput}
+            value={searchText}
+            onChangeText={handleSearchChange}
+            placeholder="아이템 이름 검색"
+            placeholderTextColor={colors.textTertiary}
+            returnKeyType="search"
+            onSubmitEditing={onSubmitSearch}
+            autoCapitalize="none"
+          />
+          {searchText.length > 0 && (
+            <Pressable onPress={onClearSearch}>
+              <Ionicons name="close-circle" size={20} color={colors.textTertiary} />
+            </Pressable>
+          )}
+        </View>
+
+        <CategoryChips
+          categories={categories}
+          selectedId={categoryId}
+          onSelect={onSelectCategory}
+          showAll
+        />
+
+        <View style={styles.sortRow}>
+          <View style={styles.sortChips}>
+            {SORT_OPTIONS.map((opt, i) => (
+              <Pressable
+                key={opt.key}
+                onPress={() => changeSort(i)}
+                style={[
+                  styles.sortChip,
+                  sortIndex === i && styles.sortChipActive,
+                ]}>
+                <Text
+                  style={[
+                    styles.sortText,
+                    sortIndex === i && styles.sortTextActive,
+                  ]}>
+                  {opt.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Pressable onPress={toggleLayout} style={styles.layoutToggle}>
+            <Ionicons
+              name={isGrid ? 'list-outline' : 'grid-outline'}
+              size={22}
+              color={colors.textSecondary}
+            />
+          </Pressable>
+        </View>
+      </View>
+
       <FlatList
         data={items}
         renderItem={renderItem}
         keyExtractor={item => String(item.seq)}
         numColumns={isGrid ? 2 : 1}
         key={isGrid ? 'grid' : 'list'}
-        ListHeaderComponent={
-          <View>
-            {/* 검색창 */}
-            <View style={styles.searchBar}>
-              <Icon name="search-outline" size={20} color={colors.textTertiary} style={{marginRight: spacing.sm}} />
-              <TextInput
-                style={styles.searchInput}
-                value={searchText}
-                onChangeText={setSearchText}
-                placeholder="아이템 이름 검색"
-                placeholderTextColor={colors.textTertiary}
-                returnKeyType="search"
-                onSubmitEditing={onSubmitSearch}
-                autoCapitalize="none"
-              />
-              {searchText.length > 0 && (
-                <Pressable onPress={onClearSearch}>
-                  <Icon name="close-circle" size={20} color={colors.textTertiary} />
-                </Pressable>
-              )}
-            </View>
-
-            {/* 카테고리 칩 */}
-            <CategoryChips
-              categories={categories}
-              selectedId={categoryId}
-              onSelect={onSelectCategory}
-              showAll
-            />
-
-            {/* 정렬 + 레이아웃 토글 */}
-            <View style={styles.sortRow}>
-              <View style={styles.sortChips}>
-                {SORT_OPTIONS.map((opt, i) => (
-                  <Pressable
-                    key={opt.key}
-                    onPress={() => changeSort(i)}
-                    style={[
-                      styles.sortChip,
-                      sortIndex === i && styles.sortChipActive,
-                    ]}>
-                    <Text
-                      style={[
-                        styles.sortText,
-                        sortIndex === i && styles.sortTextActive,
-                      ]}>
-                      {opt.label}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-              <Pressable onPress={toggleLayout} style={styles.layoutToggle}>
-                <Icon
-                  name={isGrid ? 'list-outline' : 'grid-outline'}
-                  size={22}
-                  color={colors.textSecondary}
-                />
-              </Pressable>
-            </View>
-          </View>
-        }
         ListEmptyComponent={!loading ? <EmptyState /> : null}
         contentContainerStyle={items.length === 0 && styles.emptyList}
         onRefresh={() => refresh(getOptions())}
@@ -241,14 +255,13 @@ function ListScreen({navigation}) {
         style={styles.list}
       />
 
-      {/* FAB */}
       <Pressable
         onPress={goWrite}
         style={({pressed}) => [
           styles.fab,
           pressed && styles.fabPressed,
         ]}>
-        <Icon name="add" size={28} color={colors.textInverse} />
+        <Ionicons name="add" size={28} color={colors.textInverse} />
       </Pressable>
 
       {loading && items.length === 0 && <LoadingOverlay />}
@@ -267,12 +280,19 @@ const styles = StyleSheet.create({
   emptyList: {
     flexGrow: 1,
   },
+  stickyHeader: {
+    backgroundColor: colors.background,
+    zIndex: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+    paddingBottom: spacing.xs,
+  },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
     marginHorizontal: spacing.md,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.lg,
     height: 44,

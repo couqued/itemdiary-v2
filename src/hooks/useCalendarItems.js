@@ -10,7 +10,6 @@ export function useCalendarItems() {
   const [loadingDay, setLoadingDay] = useState(false);
 
   const fetchMonthDots = useCallback(async (year, month) => {
-    setLoadingDots(true);
     try {
       const mm = String(month).padStart(2, '0');
       const firstDay = `${year}-${mm}-01`;
@@ -39,8 +38,8 @@ export function useCalendarItems() {
 
       setMarkedDates(dots);
       setMonthTotal(total);
-    } finally {
-      setLoadingDots(false);
+    } catch (e) {
+      console.error(e);
     }
   }, []);
 

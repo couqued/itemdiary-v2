@@ -4,13 +4,16 @@ import {
   FlatList,
   Text,
   StyleSheet,
-  SafeAreaView,
+  Pressable,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {Calendar, LocaleConfig} from 'react-native-calendars';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import {useIsFocused} from '@react-navigation/native';
+import Ionicons from 'react-native-vector-icons/dist/Ionicons';
 import {colors} from '../../constants/colors';
 import {typography} from '../../constants/typography';
-import {spacing} from '../../constants/spacing';
+import {spacing, radius} from '../../constants/spacing';
 import {useCalendarItems} from '../../hooks/useCalendarItems';
 import {useCategories} from '../../hooks/useCategories';
 import {ItemCard} from '../../components/ItemCard';
@@ -25,7 +28,7 @@ LocaleConfig.locales['ko'] = {
 };
 LocaleConfig.defaultLocale = 'ko';
 
-function CalendarScreen({navigation}) {
+function SearchScreen({navigation}) {
   const isFocused = useIsFocused();
   const {markedDates, dayItems, monthTotal, loadingDots, loadingDay, fetchMonthDots, fetchDayItems} =
     useCalendarItems();
@@ -35,6 +38,7 @@ function CalendarScreen({navigation}) {
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth() + 1);
   const [selectedDate, setSelectedDate] = useState(null);
+  const [pickerVisible, setPickerVisible] = useState(false);
 
   useEffect(() => {
     if (isFocused) {
@@ -52,6 +56,21 @@ function CalendarScreen({navigation}) {
   const onDayPress = day => {
     setSelectedDate(day.dateString);
     fetchDayItems(day.dateString);
+  };
+
+  const showPicker = () => setPickerVisible(true);
+  const hidePicker = () => setPickerVisible(false);
+
+  const onPickerConfirm = date => {
+    hidePicker();
+    setTimeout(() => {
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      setCurrentYear(year);
+      setCurrentMonth(month);
+      setSelectedDate(null);
+      fetchMonthDots(year, month);
+    }, 100);
   };
 
   const markedDatesWithSelected = selectedDate
@@ -92,52 +111,7 @@ function CalendarScreen({navigation}) {
         />
       );
     },
-    [],
-  );
-
-  const renderHeader = () => (
-    <View>
-      <Calendar
-        current={`${currentYear}-${String(currentMonth).padStart(2, '0')}-01`}
-        onMonthChange={onMonthChange}
-        onDayPress={onDayPress}
-        markedDates={markedDatesWithSelected}
-        renderHeader={date => {
-          const d = new Date(date);
-          const year = d.getFullYear();
-          const month = d.getMonth() + 1;
-          return (
-            <View style={styles.calendarHeader}>
-              <Text style={styles.calendarHeaderTitle}>{year}년 {month}월</Text>
-              <Text style={styles.calendarHeaderTotal}>
-                이달 지출: {formatMonthTotal(monthTotal)}
-              </Text>
-            </View>
-          );
-        }}
-        theme={{
-          backgroundColor: colors.surface,
-          calendarBackground: colors.surface,
-          selectedDayBackgroundColor: colors.primary,
-          selectedDayTextColor: colors.textInverse,
-          todayTextColor: colors.primary,
-          dayTextColor: colors.text,
-          textDisabledColor: colors.textTertiary,
-          dotColor: colors.primary,
-          selectedDotColor: colors.textInverse,
-          arrowColor: colors.primary,
-          monthTextColor: colors.text,
-          indicatorColor: colors.primary,
-        }}
-        style={styles.calendar}
-      />
-
-      {selectedDate && (
-        <View style={styles.dayHeader}>
-          <Text style={styles.dayHeaderText}>{formatSelectedDate(selectedDate)}</Text>
-        </View>
-      )}
-    </View>
+    [getCategoryById],
   );
 
   const emptyText = selectedDate
@@ -146,11 +120,51 @@ function CalendarScreen({navigation}) {
 
   return (
     <SafeAreaView style={styles.container}>
+      <View style={styles.stickyHeader}>
+        <Calendar
+          key={`${currentYear}-${currentMonth}`}
+          current={`${currentYear}-${String(currentMonth).padStart(2, '0')}-01`}
+          onMonthChange={onMonthChange}
+          onDayPress={onDayPress}
+          markedDates={markedDatesWithSelected}
+          renderHeader={() => (
+            <View style={styles.calendarHeader}>
+              <Pressable onPress={showPicker} style={styles.titleContainer}>
+                <Text style={styles.calendarHeaderTitle}>{currentYear}년 {currentMonth}월</Text>
+              </Pressable>
+              <Text style={styles.calendarHeaderTotal}>
+                이달 지출: {formatMonthTotal(monthTotal)}
+              </Text>
+            </View>
+          )}
+          theme={{
+            backgroundColor: colors.surface,
+            calendarBackground: colors.surface,
+            selectedDayBackgroundColor: colors.primary,
+            selectedDayTextColor: colors.textInverse,
+            todayTextColor: colors.primary,
+            dayTextColor: colors.text,
+            textDisabledColor: colors.textTertiary,
+            dotColor: colors.primary,
+            selectedDotColor: colors.textInverse,
+            arrowColor: colors.primary,
+            monthTextColor: colors.text,
+            indicatorColor: colors.primary,
+          }}
+          style={styles.calendar}
+        />
+
+        {selectedDate && (
+          <View style={styles.dayHeader}>
+            <Text style={styles.dayHeaderText}>{formatSelectedDate(selectedDate)}</Text>
+          </View>
+        )}
+      </View>
+
       <FlatList
         data={selectedDate ? dayItems : []}
         renderItem={renderItem}
         keyExtractor={item => String(item.seq)}
-        ListHeaderComponent={renderHeader}
         ListEmptyComponent={
           !loadingDay ? (
             <View style={styles.emptyContainer}>
@@ -162,6 +176,18 @@ function CalendarScreen({navigation}) {
         style={styles.list}
       />
 
+      <DateTimePickerModal
+        isVisible={pickerVisible}
+        mode="date"
+        onConfirm={onPickerConfirm}
+        onCancel={hidePicker}
+        date={new Date(currentYear, currentMonth - 1, 1)}
+        locale="ko"
+        confirmTextIOS="선택"
+        cancelTextIOS="취소"
+        headerTextIOS="년월 선택"
+      />
+
       {(loadingDots || loadingDay) && <LoadingOverlay />}
     </SafeAreaView>
   );
@@ -171,6 +197,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  stickyHeader: {
+    backgroundColor: colors.background,
+    zIndex: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
   },
   list: {
     flex: 1,
@@ -184,6 +216,10 @@ const styles = StyleSheet.create({
   },
   calendarHeader: {
     alignItems: 'center',
+    paddingVertical: spacing.xs,
+  },
+  titleContainer: {
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
   },
   calendarHeaderTitle: {
@@ -216,4 +252,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default CalendarScreen;
+export default SearchScreen;

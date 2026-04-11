@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
-import Icon from 'react-native-vector-icons/Ionicons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import {colors} from '../../constants/colors';
 import {typography} from '../../constants/typography';
 import {spacing, radius} from '../../constants/spacing';
@@ -165,7 +165,7 @@ function ItemFormScreen({navigation, route}) {
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} style={styles.headerBtn}>
-          <Icon name="close" size={28} color={colors.text} />
+          <Ionicons name="close" size={28} color={colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>
           {isEdit ? '아이템 수정' : '아이템 등록'}
@@ -188,7 +188,7 @@ function ItemFormScreen({navigation, route}) {
             <Image source={{uri: previewUri}} style={styles.image} />
           ) : (
             <View style={styles.imagePlaceholder}>
-              <Icon name="camera-outline" size={40} color={colors.textTertiary} />
+              <Ionicons name="camera-outline" size={40} color={colors.textTertiary} />
               <Text style={styles.imagePlaceholderText}>사진 추가</Text>
             </View>
           )}
@@ -210,7 +210,7 @@ function ItemFormScreen({navigation, route}) {
             <Pressable
               onPress={() => setDatePickerVisible(true)}
               style={styles.dateButton}>
-              <Icon name="calendar-outline" size={18} color={colors.textSecondary} style={{marginRight: spacing.sm}} />
+              <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} style={{marginRight: spacing.sm}} />
               <Text style={styles.dateText}>{formatDateKo(date)}</Text>
             </Pressable>
             <View style={styles.quickDates}>
@@ -260,7 +260,7 @@ function ItemFormScreen({navigation, route}) {
         <Pressable
           onPress={() => setShowExtra(!showExtra)}
           style={styles.extraToggle}>
-          <Icon
+          <Ionicons
             name={showExtra ? 'chevron-up' : 'add'}
             size={20}
             color={colors.primary}
