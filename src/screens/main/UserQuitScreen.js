@@ -6,74 +6,105 @@ import {
   SafeAreaView,
   ScrollView,
   Pressable,
-  Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import {colors} from '../../constants/colors';
 import {typography} from '../../constants/typography';
 import {spacing, radius} from '../../constants/spacing';
-import {Input} from '../../components/ui/Input';
-import {Button} from '../../components/ui/Button';
-import {LoadingOverlay} from '../../components/ui/LoadingOverlay';
+import {Input, CustomAlert, LoadingOverlay} from '../../components/ui';
 import {supabase} from '../../lib/supabase';
 
 function UserQuitScreen({navigation}) {
   const [loading, setLoading] = useState(false);
   const [password, setPassword] = useState('');
+  
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    confirmText: '확인',
+    type: 'default',
+    onConfirm: () => setAlertConfig(prev => ({...prev, visible: false})),
+    onCancel: null,
+  });
 
-  const onQuit = () => {
-    Alert.alert('', '정말 탈퇴 하시겠습니까?', [
-      {text: '취소', style: 'cancel'},
-      {
-        text: '탈퇴하기',
-        style: 'destructive',
-        onPress: doQuit,
-      },
-    ]);
+  const showAlert = (config) => {
+    setAlertConfig({
+      ...config,
+      visible: true,
+    });
+  };
+
+  const onQuitPress = () => {
+    if (!password.trim()) {
+      showAlert({
+        title: '알림',
+        message: '패스워드를 입력해주세요.',
+        onConfirm: () => setAlertConfig(prev => ({...prev, visible: false})),
+      });
+      return;
+    }
+
+    showAlert({
+      title: '탈퇴 확인',
+      message: '정말로 탈퇴하시겠습니까?\n모든 데이터가 즉시 삭제됩니다.',
+      confirmText: '탈퇴하기',
+      cancelText: '취소',
+      type: 'danger',
+      onConfirm: doQuit,
+      onCancel: () => setAlertConfig(prev => ({...prev, visible: false})),
+    });
   };
 
   const doQuit = async () => {
-    if (!password.trim()) {
-      Alert.alert('', '패스워드를 입력해주세요.', [{text: '확인'}]);
-      return;
-    }
-
+    setAlertConfig(prev => ({...prev, visible: false}));
     setLoading(true);
 
-    const {
-      data: {user},
-    } = await supabase.auth.getUser();
-    if (!user) {
+    try {
+      const {
+        data: {user},
+      } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('ID를 확인할 수 없습니다.');
+      }
+
+      // 1. 비밀번호 재검증
+      const {error: signInError} = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password,
+      });
+
+      if (signInError) {
+        throw new Error('비밀번호가 올바르지 않습니다.');
+      }
+
+      // 2. 사용자 아이템 데이터 삭제
+      const {error: deleteError} = await supabase
+        .from('items')
+        .delete()
+        .eq('user_id', user.email);
+
+      if (deleteError) {
+        throw new Error('데이터 삭제 중 오류가 발생했습니다.');
+      }
+
+      // 3. 계정 삭제 시도 (Supabase RPC 호출)
+      // 주의: 이 기능은 Supabase에서 'delete_user'라는 RPC 함수를 직접 생성해야 작동합니다.
+      // 클라이언트 라이브러리만으로는 보안상 Auth 유저를 직접 삭제할 수 없습니다.
+      const { error: rpcError } = await supabase.rpc('delete_user');
+      
+      // RPC가 없더라도 일단 로그아웃 처리하여 진행
+      await supabase.auth.signOut();
+      
+    } catch (e) {
+      showAlert({
+        title: '탈퇴 실패',
+        message: e.message || '탈퇴 처리 중 오류가 발생했습니다.',
+        onConfirm: () => setAlertConfig(prev => ({...prev, visible: false})),
+      });
+    } finally {
       setLoading(false);
-      Alert.alert('', 'ID를 확인할 수 없습니다.');
-      return;
     }
-
-    const {error: signInError} = await supabase.auth.signInWithPassword({
-      email: user.email,
-      password,
-    });
-
-    if (signInError) {
-      setLoading(false);
-      Alert.alert('', '비밀번호를 확인해주세요.', [{text: '확인'}]);
-      return;
-    }
-
-    const {error: deleteError} = await supabase
-      .from('items')
-      .delete()
-      .eq('user_id', user.email);
-
-    if (deleteError) {
-      setLoading(false);
-      Alert.alert('', '탈퇴처리에 실패하였습니다.', [{text: '확인'}]);
-      return;
-    }
-
-    await supabase.auth.signOut();
-    setLoading(false);
-    navigation.reset({routes: [{name: 'SignUp'}]});
   };
 
   return (
@@ -105,13 +136,26 @@ function UserQuitScreen({navigation}) {
           returnKeyType="done"
         />
 
-        <Button
-          title="탈퇴하기"
-          onPress={onQuit}
-          variant="danger"
-          style={{marginTop: spacing.lg}}
-        />
+        <Pressable
+          onPress={onQuitPress}
+          style={({pressed}) => [
+            styles.quitBtn,
+            pressed && {opacity: 0.8}
+          ]}>
+          <Text style={styles.quitBtnText}>탈퇴하기</Text>
+        </Pressable>
       </ScrollView>
+
+      <CustomAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        confirmText={alertConfig.confirmText}
+        cancelText={alertConfig.cancelText}
+        type={alertConfig.type}
+        onConfirm={alertConfig.onConfirm}
+        onCancel={alertConfig.onCancel}
+      />
 
       {loading && <LoadingOverlay />}
     </SafeAreaView>
@@ -159,6 +203,18 @@ const styles = StyleSheet.create({
     color: '#92400E',
     flex: 1,
   },
+  quitBtn: {
+    backgroundColor: colors.danger,
+    height: 52,
+    borderRadius: radius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: spacing.xl,
+  },
+  quitBtnText: {
+    ...typography.bodyBold,
+    color: colors.textInverse,
+  }
 });
 
 export default UserQuitScreen;

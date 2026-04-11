@@ -6,7 +6,6 @@ import {
   SafeAreaView,
   Pressable,
   Platform,
-  Alert,
   ScrollView,
 } from 'react-native';
 import {useIsFocused} from '@react-navigation/native';
@@ -17,6 +16,7 @@ import {typography} from '../../constants/typography';
 import {spacing, radius} from '../../constants/spacing';
 import {formatPrice} from '../../utils/formatPrice';
 import {supabase} from '../../lib/supabase';
+import {CustomAlert} from '../../components/ui';
 
 function ProfileScreen({navigation}) {
   const isFocused = useIsFocused();
@@ -24,6 +24,7 @@ function ProfileScreen({navigation}) {
   const [latestVersion, setLatestVersion] = useState('');
   const [stats, setStats] = useState({total: 0, totalSpent: 0, monthSpent: 0});
   const [userEmail, setUserEmail] = useState('');
+  const [logoutVisible, setLogoutVisible] = useState(false);
 
   useEffect(() => {
     if (!isFocused) return;
@@ -62,18 +63,9 @@ function ProfileScreen({navigation}) {
     setStats({total, totalSpent, monthSpent});
   };
 
-  const logOut = () => {
-    Alert.alert('', '로그아웃 하시겠습니까?', [
-      {text: '취소', style: 'cancel'},
-      {
-        text: '로그아웃',
-        style: 'destructive',
-        onPress: async () => {
-          await supabase.auth.signOut();
-          navigation.reset({routes: [{name: 'SignUp'}]});
-        },
-      },
-    ]);
+  const handleLogout = async () => {
+    setLogoutVisible(false);
+    await supabase.auth.signOut();
   };
 
   const goQuit = () => {
@@ -108,7 +100,7 @@ function ProfileScreen({navigation}) {
 
         {/* 메뉴 */}
         <View style={styles.menuSection}>
-          <MenuItem icon="log-out-outline" label="로그아웃" onPress={logOut} />
+          <MenuItem icon="log-out-outline" label="로그아웃" onPress={() => setLogoutVisible(true)} />
           <MenuItem
             icon="person-remove-outline"
             label="탈퇴하기"
@@ -127,6 +119,15 @@ function ProfileScreen({navigation}) {
           </View>
         </View>
       </ScrollView>
+
+      <CustomAlert
+        visible={logoutVisible}
+        title="로그아웃"
+        message="로그아웃 하시겠습니까?"
+        confirmText="로그아웃"
+        onConfirm={handleLogout}
+        onCancel={() => setLogoutVisible(false)}
+      />
     </SafeAreaView>
   );
 }

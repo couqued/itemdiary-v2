@@ -9,25 +9,22 @@ export function CategoryChips({
   selectedId,
   onSelect,
   showAll = false,
-  compact = false,
 }) {
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={[styles.container, compact && styles.containerCompact]}>
+      contentContainerStyle={styles.container}>
       {showAll && (
         <Pressable
           onPress={() => onSelect(null)}
           style={[
             styles.chip,
-            compact && styles.chipCompact,
             !selectedId && styles.chipActive,
           ]}>
           <Text
             style={[
               styles.chipText,
-              compact && styles.chipTextCompact,
               !selectedId && styles.chipTextActive,
             ]}>
             전체
@@ -42,13 +39,11 @@ export function CategoryChips({
             onPress={() => onSelect(cat.id)}
             style={[
               styles.chip,
-              compact && styles.chipCompact,
               isSelected && {backgroundColor: cat.color},
             ]}>
             <Text
               style={[
                 styles.chipText,
-                compact && styles.chipTextCompact,
                 isSelected && styles.chipTextActive,
               ]}>
               {cat.name}
@@ -63,37 +58,31 @@ export function CategoryChips({
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  containerCompact: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.sm + 2, // 상하 여백 약간 축소
   },
   chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md + 4, // 가로 패딩 20% 축소 (24 -> 20)
+    paddingVertical: 6,               // 세로 패딩 축소 (8 -> 6)
     borderRadius: radius.full,
     backgroundColor: colors.surfaceSecondary,
     marginRight: spacing.sm,
-  },
-  chipCompact: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    marginRight: spacing.xs,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 1},
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
   },
   chipActive: {
     backgroundColor: colors.primary,
   },
   chipText: {
-    ...typography.caption,
+    fontSize: 15, // 글자 크기 미세 조정 (16 -> 15)
     color: colors.textSecondary,
     textAlign: 'center',
-  },
-  chipTextCompact: {
-    fontSize: 11,
+    fontWeight: '500',
   },
   chipTextActive: {
     color: colors.textInverse,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

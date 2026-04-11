@@ -24,8 +24,8 @@ android {
         applicationId "com.openended.keep_product"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 18
-        versionName "1.1.8"
+        versionCode 19
+        versionName "1.2.1"
         multiDexEnabled true
     }
 
@@ -61,7 +61,7 @@ android {
 
 dependencies {
     implementation("com.facebook.react:react-android")
-    implementation("androidx.activity:activity:1.9.3") // EdgeToEdge 지원 필수 라이브러리
+    implementation("androidx.activity:activity:1.9.3")
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

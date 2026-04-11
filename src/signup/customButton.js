@@ -10,7 +10,7 @@
  import {StyleSheet, View, Pressable, Text, Platform} from 'react-native';
 
 
- function CustomButton ({onPress, title, hasMarginBottom, theme}) {
+ function CustomButton ({onPress, title, hasMarginBottom, theme = 'primary'}) {
    const isPrimary = theme === 'primary';
 
   return(
@@ -38,10 +38,6 @@
       </Pressable>
     </View>
   )
- }
-
- CustomButton.defaultProps = {
-   theme: 'primary',
  }
 
  const styles = StyleSheet.create({

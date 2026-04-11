@@ -9,8 +9,8 @@ import {
   BackHandler,
   ToastAndroid,
   StatusBar,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {useIsFocused} from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -68,7 +68,7 @@ function ListScreen({navigation}) {
     if (isFocused) {
       fetchItems(getOptions());
     }
-  }, [isFocused, getOptions]);
+  }, [isFocused]);
 
   // 안드로이드 뒤로가기
   useEffect(() => {
@@ -163,78 +163,75 @@ function ListScreen({navigation}) {
     [isGrid, categories],
   );
 
-  const renderHeader = () => (
-    <View>
-      {/* 검색창 */}
-      <View style={styles.searchBar}>
-        <Icon name="search-outline" size={20} color={colors.textTertiary} style={{marginRight: spacing.sm}} />
-        <TextInput
-          style={styles.searchInput}
-          value={searchText}
-          onChangeText={setSearchText}
-          placeholder="아이템 이름 검색"
-          placeholderTextColor={colors.textTertiary}
-          returnKeyType="search"
-          onSubmitEditing={onSubmitSearch}
-          autoCapitalize="none"
-        />
-        {searchText.length > 0 && (
-          <Pressable onPress={onClearSearch}>
-            <Icon name="close-circle" size={20} color={colors.textTertiary} />
-          </Pressable>
-        )}
-      </View>
-
-      {/* 카테고리 칩 */}
-      <CategoryChips
-        categories={categories}
-        selectedId={categoryId}
-        onSelect={onSelectCategory}
-        showAll
-        compact
-      />
-
-      {/* 정렬 + 레이아웃 토글 */}
-      <View style={styles.sortRow}>
-        <View style={styles.sortChips}>
-          {SORT_OPTIONS.map((opt, i) => (
-            <Pressable
-              key={opt.key}
-              onPress={() => changeSort(i)}
-              style={[
-                styles.sortChip,
-                sortIndex === i && styles.sortChipActive,
-              ]}>
-              <Text
-                style={[
-                  styles.sortText,
-                  sortIndex === i && styles.sortTextActive,
-                ]}>
-                {opt.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <Pressable onPress={toggleLayout} style={styles.layoutToggle}>
-          <Icon
-            name={isGrid ? 'list-outline' : 'grid-outline'}
-            size={22}
-            color={colors.textSecondary}
-          />
-        </Pressable>
-      </View>
-    </View>
-  );
-
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <FlatList
         data={items}
         renderItem={renderItem}
         keyExtractor={item => String(item.seq)}
         numColumns={isGrid ? 2 : 1}
         key={isGrid ? 'grid' : 'list'}
-        ListHeaderComponent={renderHeader}
+        ListHeaderComponent={
+          <View>
+            {/* 검색창 */}
+            <View style={styles.searchBar}>
+              <Icon name="search-outline" size={20} color={colors.textTertiary} style={{marginRight: spacing.sm}} />
+              <TextInput
+                style={styles.searchInput}
+                value={searchText}
+                onChangeText={setSearchText}
+                placeholder="아이템 이름 검색"
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="search"
+                onSubmitEditing={onSubmitSearch}
+                autoCapitalize="none"
+              />
+              {searchText.length > 0 && (
+                <Pressable onPress={onClearSearch}>
+                  <Icon name="close-circle" size={20} color={colors.textTertiary} />
+                </Pressable>
+              )}
+            </View>
+
+            {/* 카테고리 칩 */}
+            <CategoryChips
+              categories={categories}
+              selectedId={categoryId}
+              onSelect={onSelectCategory}
+              showAll
+            />
+
+            {/* 정렬 + 레이아웃 토글 */}
+            <View style={styles.sortRow}>
+              <View style={styles.sortChips}>
+                {SORT_OPTIONS.map((opt, i) => (
+                  <Pressable
+                    key={opt.key}
+                    onPress={() => changeSort(i)}
+                    style={[
+                      styles.sortChip,
+                      sortIndex === i && styles.sortChipActive,
+                    ]}>
+                    <Text
+                      style={[
+                        styles.sortText,
+                        sortIndex === i && styles.sortTextActive,
+                      ]}>
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Pressable onPress={toggleLayout} style={styles.layoutToggle}>
+                <Icon
+                  name={isGrid ? 'list-outline' : 'grid-outline'}
+                  size={22}
+                  color={colors.textSecondary}
+                />
+              </Pressable>
+            </View>
+          </View>
+        }
         ListEmptyComponent={!loading ? <EmptyState /> : null}
         contentContainerStyle={items.length === 0 && styles.emptyList}
         onRefresh={() => refresh(getOptions())}

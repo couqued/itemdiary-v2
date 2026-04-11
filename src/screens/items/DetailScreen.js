@@ -4,18 +4,16 @@ import {
   Text,
   Image,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   Pressable,
-  Alert,
   Linking,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import {colors} from '../../constants/colors';
 import {typography} from '../../constants/typography';
 import {spacing, radius} from '../../constants/spacing';
-import {Badge} from '../../components/ui/Badge';
-import {LoadingOverlay} from '../../components/ui/LoadingOverlay';
+import {Badge, LoadingOverlay, CustomAlert} from '../../components/ui';
 import {useCategories} from '../../hooks/useCategories';
 import {formatPrice} from '../../utils/formatPrice';
 import {formatDateKo} from '../../utils/formatDate';
@@ -30,29 +28,22 @@ function DetailScreen({navigation, route}) {
   const {getCategoryById} = useCategories();
   const category = getCategoryById(item.category_id);
   const [loading, setLoading] = useState(false);
+  const [deleteVisible, setDeleteVisible] = useState(false);
 
-  const onDelete = () => {
-    Alert.alert('알림', '삭제하시겠습니까?', [
-      {text: '취소', style: 'cancel'},
-      {
-        text: '삭제',
-        style: 'destructive',
-        onPress: async () => {
-          setLoading(true);
-          const {error} = await supabase
-            .from('items')
-            .delete()
-            .eq('seq', item.seq);
-          setLoading(false);
+  const onDeleteConfirm = async () => {
+    setDeleteVisible(false);
+    setLoading(true);
+    const {error} = await supabase
+      .from('items')
+      .delete()
+      .eq('seq', item.seq);
+    setLoading(false);
 
-          if (error) {
-            Alert.alert('', '삭제에 실패하였습니다.', [{text: '확인'}]);
-            return;
-          }
-          navigation.goBack();
-        },
-      },
-    ]);
+    if (error) {
+      // 에러 알림은 간단하게 처리하거나 추가 CustomAlert 필요
+      return;
+    }
+    navigation.goBack();
   };
 
   const onEdit = () => {
@@ -62,13 +53,13 @@ function DetailScreen({navigation, route}) {
   const onOpenLink = () => {
     if (item.link) {
       Linking.openURL(item.link).catch(() => {
-        Alert.alert('', '링크를 열 수 없습니다.', [{text: '확인'}]);
+        // 링크 오류 알림
       });
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} style={styles.headerBtn}>
@@ -76,7 +67,7 @@ function DetailScreen({navigation, route}) {
         </Pressable>
         <Text style={styles.headerTitle}>상세정보</Text>
         <Pressable onPress={onEdit} style={styles.headerBtn}>
-          <Icon name="pencil-outline" size={24} color={colors.text} />
+          <Text style={styles.editBtnText}>수정</Text>
         </Pressable>
       </View>
 
@@ -127,16 +118,27 @@ function DetailScreen({navigation, route}) {
       {/* 하단 액션 바 */}
       <View style={styles.actionBar}>
         <Pressable
-          onPress={onDelete}
+          onPress={() => setDeleteVisible(true)}
           style={({pressed}) => [
             styles.actionBtn,
             styles.deleteBtn,
             pressed && {opacity: 0.8},
           ]}>
-          <Icon name="trash-outline" size={20} color={colors.danger} style={{marginRight: spacing.xs}} />
+          <Icon name="trash-outline" size={20} color={colors.danger} style={{marginRight: spacing.sm}} />
           <Text style={styles.deleteBtnText}>삭제하기</Text>
         </Pressable>
       </View>
+
+      <CustomAlert
+        visible={deleteVisible}
+        title="삭제 확인"
+        message="정말로 이 아이템을 삭제하시겠습니까?"
+        confirmText="삭제"
+        cancelText="취소"
+        type="danger"
+        onConfirm={onDeleteConfirm}
+        onCancel={() => setDeleteVisible(false)}
+      />
 
       {loading && <LoadingOverlay />}
     </SafeAreaView>
@@ -178,6 +180,10 @@ const styles = StyleSheet.create({
     ...typography.h3,
     color: colors.text,
   },
+  editBtnText: {
+    ...typography.bodyBold,
+    color: colors.primary,
+  },
   scroll: {
     flex: 1,
   },
@@ -187,7 +193,7 @@ const styles = StyleSheet.create({
   },
   imagePlaceholder: {
     width: '100%',
-    height: 200,
+    height: 240,
     backgroundColor: colors.surfaceSecondary,
     justifyContent: 'center',
     alignItems: 'center',
@@ -241,7 +247,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.sm + 2,
+    paddingVertical: spacing.sm + 4,
     borderRadius: radius.md,
   },
   deleteBtn: {

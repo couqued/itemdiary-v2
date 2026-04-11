@@ -1,14 +1,20 @@
 import React from 'react';
 import {View, Text, Image, StyleSheet, Pressable} from 'react-native';
+import Icon from 'react-native-vector-icons/Ionicons';
 import {colors} from '../constants/colors';
 import {typography} from '../constants/typography';
 import {spacing, radius} from '../constants/spacing';
 import {Badge} from './ui/Badge';
 import {formatPrice} from '../utils/formatPrice';
 import {formatDateShort} from '../utils/formatDate';
-import sample from '../assets/sample.jpeg';
 
 export function ItemCard({item, category, onPress, isGrid = true}) {
+  const renderPlaceholder = (style) => (
+    <View style={[style, styles.placeholder]}>
+      <Icon name="image-outline" size={isGrid ? 32 : 24} color={colors.textTertiary} />
+    </View>
+  );
+
   if (isGrid) {
     return (
       <Pressable
@@ -17,10 +23,14 @@ export function ItemCard({item, category, onPress, isGrid = true}) {
           styles.gridCard,
           pressed && styles.pressed,
         ]}>
-        <Image
-          source={item.image_url ? {uri: item.image_url} : sample}
-          style={styles.gridImage}
-        />
+        {item.image_url ? (
+          <Image
+            source={{uri: item.image_url}}
+            style={styles.gridImage}
+          />
+        ) : (
+          renderPlaceholder(styles.gridImage)
+        )}
         <View style={styles.gridContent}>
           <Text style={styles.gridTitle} numberOfLines={1}>
             {item.name}
@@ -50,10 +60,14 @@ export function ItemCard({item, category, onPress, isGrid = true}) {
         styles.listCard,
         pressed && styles.pressed,
       ]}>
-      <Image
-        source={item.image_url ? {uri: item.image_url} : sample}
-        style={styles.listImage}
-      />
+      {item.image_url ? (
+        <Image
+          source={{uri: item.image_url}}
+          style={styles.listImage}
+        />
+      ) : (
+        renderPlaceholder(styles.listImage)
+      )}
       <View style={styles.listContent}>
         <Text style={styles.listTitle} numberOfLines={1}>
           {item.name}
@@ -91,6 +105,11 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 1,
     resizeMode: 'cover',
+  },
+  placeholder: {
+    backgroundColor: colors.surfaceSecondary,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   gridContent: {
     padding: spacing.sm,

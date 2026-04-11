@@ -4,3 +4,4 @@ export {Badge} from './Badge';
 export {Input} from './Input';
 export {LoadingOverlay} from './LoadingOverlay';
 export {EmptyState} from './EmptyState';
+export {CustomAlert} from './CustomAlert';

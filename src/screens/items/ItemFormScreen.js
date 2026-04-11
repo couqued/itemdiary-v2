@@ -4,21 +4,18 @@ import {
   Text,
   Image,
   StyleSheet,
-  SafeAreaView,
   Pressable,
-  Alert,
   ScrollView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import Icon from 'react-native-vector-icons/Ionicons';
 import {colors} from '../../constants/colors';
 import {typography} from '../../constants/typography';
 import {spacing, radius} from '../../constants/spacing';
-import {Input} from '../../components/ui/Input';
-import {Button} from '../../components/ui/Button';
-import {LoadingOverlay} from '../../components/ui/LoadingOverlay';
+import {Input, CustomAlert, LoadingOverlay} from '../../components/ui';
 import {CategoryChips} from '../../components/CategoryChips';
 import {useImagePicker} from '../../hooks/useImagePicker';
 import {useCategories} from '../../hooks/useCategories';
@@ -30,7 +27,7 @@ function ItemFormScreen({navigation, route}) {
   const existingItem = route.params?.item;
   const isEdit = !!existingItem;
 
-  const {pickImage, takePhoto, uploadImage, previewUri, setExistingImageUrl} =
+  const {pickImage, uploadImage, previewUri, setExistingImageUrl} =
     useImagePicker();
   const {categories} = useCategories();
 
@@ -44,6 +41,16 @@ function ItemFormScreen({navigation, route}) {
   const [memo, setMemo] = useState('');
   const [categoryId, setCategoryId] = useState(null);
   const [showExtra, setShowExtra] = useState(false);
+
+  // Alerts
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    onCancel: null,
+    confirmText: '확인',
+  });
 
   useEffect(() => {
     if (existingItem) {
@@ -61,6 +68,10 @@ function ItemFormScreen({navigation, route}) {
     }
   }, []);
 
+  const showAlert = (config) => {
+    setAlertConfig({...config, visible: true});
+  };
+
   const onChangePrice = text => {
     setPrice(formatPrice(text));
   };
@@ -71,23 +82,32 @@ function ItemFormScreen({navigation, route}) {
     setDate(d);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!title.trim()) {
-      Alert.alert('', '제목을 입력해주세요.', [{text: '확인'}]);
+      showAlert({
+        title: '알림',
+        message: '제목을 입력해주세요.',
+        onConfirm: () => setAlertConfig(prev => ({...prev, visible: false})),
+      });
       return;
     }
 
     if (isEdit) {
-      Alert.alert('알림', '수정하시겠습니까?', [
-        {text: '취소', style: 'cancel'},
-        {text: '수정', onPress: doSave, style: 'destructive'},
-      ]);
+      showAlert({
+        title: '수정 확인',
+        message: '정보를 수정하시겠습니까?',
+        confirmText: '수정',
+        cancelText: '취소',
+        onConfirm: doSave,
+        onCancel: () => setAlertConfig(prev => ({...prev, visible: false})),
+      });
     } else {
       doSave();
     }
   };
 
   const doSave = async () => {
+    setAlertConfig(prev => ({...prev, visible: false}));
     setLoading(true);
 
     try {
@@ -118,33 +138,30 @@ function ItemFormScreen({navigation, route}) {
           .update({...itemData, updated_at: new Date().toISOString()})
           .eq('seq', existingItem.seq);
 
-        if (error) {
-          Alert.alert('', '수정에 실패하였습니다.', [{text: '확인'}]);
-          return;
-        }
+        if (error) throw error;
       } else {
         const {error} = await supabase.from('items').insert({
           ...itemData,
           user_id: user.email,
         });
 
-        if (error) {
-          Alert.alert('', '저장에 실패하였습니다.', [{text: '확인'}]);
-          return;
-        }
+        if (error) throw error;
       }
 
       navigation.goBack();
     } catch (e) {
-      console.log('Save error:', e);
-      Alert.alert('', '일시적인 오류가 발생하였습니다.', [{text: '확인'}]);
+      showAlert({
+        title: '오류',
+        message: '저장에 실패하였습니다.',
+        onConfirm: () => setAlertConfig(prev => ({...prev, visible: false})),
+      });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} style={styles.headerBtn}>
@@ -158,16 +175,14 @@ function ItemFormScreen({navigation, route}) {
         </Pressable>
       </View>
 
-      <KeyboardAwareScrollView style={styles.scroll}>
+      <KeyboardAwareScrollView
+        style={styles.scroll}
+        enableOnAndroid={true}
+        extraScrollHeight={180}
+        keyboardShouldPersistTaps="handled">
         {/* 이미지 */}
         <Pressable
-          onPress={() =>
-            Alert.alert('사진 추가', null, [
-              {text: '앨범에서 선택', onPress: pickImage},
-              {text: '카메라로 촬영', onPress: takePhoto},
-              {text: '취소', style: 'cancel'},
-            ])
-          }
+          onPress={pickImage}
           style={styles.imageSection}>
           {previewUri ? (
             <Image source={{uri: previewUri}} style={styles.image} />
@@ -288,6 +303,16 @@ function ItemFormScreen({navigation, route}) {
 
         <View style={{height: 40}} />
       </KeyboardAwareScrollView>
+
+      <CustomAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        confirmText={alertConfig.confirmText}
+        cancelText={alertConfig.cancelText}
+        onConfirm={alertConfig.onConfirm}
+        onCancel={alertConfig.onCancel}
+      />
 
       {loading && <LoadingOverlay />}
     </SafeAreaView>

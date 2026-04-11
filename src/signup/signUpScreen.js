@@ -12,13 +12,13 @@
 
  import SignUpForm from './signUpForm';
  import SignUpButton from './signUpButton';
- import InitSplash from 'react-native-splash-screen';
- import Splash from '../../src/utils/splash';
+ import Splash from '../../src/utils/splash'; // This is likely the custom loading screen
  import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
  import { supabase } from '../lib/supabase';
+ import { CustomAlert } from '../components/ui';
 
  function SignUpScreen ({navigation, route}) {
-   const [splash, setSplash] = useState(null);
+   const [isAuthLoading, setIsAuthLoading] = useState(false); // 단일 로딩 상태로 관리
 
    const {isSignUp} = route.params || {};
    const [form, setForm] = useState({
@@ -27,20 +27,12 @@
      confirmPassword: '',
    });
 
-   InitSplash.hide();
-
-
-   useEffect(() => {
-    loginChk();
-    async function loginChk(){
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        navigation.reset({routes: [{name: 'Main'}]});
-      }
-    }
-  }, []);
-
-   const [loading, setLoading] = useState();
+   const [alertConfig, setAlertConfig] = useState({
+     visible: false,
+     title: '',
+     message: '',
+     onConfirm: () => setAlertConfig(prev => ({...prev, visible: false})),
+   });
 
    const createChangeTextHandler = (name) => (value) => {
      setForm({...form, [name]: value});
@@ -55,6 +47,15 @@
        }
    }
 
+   const showAlert = (title, message) => {
+     setAlertConfig({
+       visible: true,
+       title,
+       message,
+       onConfirm: () => setAlertConfig(prev => ({...prev, visible: false})),
+     });
+   };
+
    const onSubmit = async () => {
      Keyboard.dismiss();
 
@@ -62,162 +63,145 @@
      const info = {email, password, confirmPassword};
 
      if(null === email || "" == email.trim()){
-        Alert.alert('', '이메일을 입력해주세요.', [{text: '확인'}]);
+        showAlert('알림', '이메일을 입력해주세요.');
         return;
      }else{
         if(!checkEmail(email))	{
-          Alert.alert('', '이메일 형식이 잘못되었습니다.', [{text: '확인'}]);
+          showAlert('알림', '이메일 형식이 잘못되었습니다.');
           return;
         }
      }
 
      if(null === password || "" == password.trim()){
-      Alert.alert('', '비밀번호를 입력해주세요.', [{text: '확인'}]);
+      showAlert('알림', '비밀번호를 입력해주세요.');
       return;
      }
      if(isSignUp && (password !== confirmPassword)){
-      Alert.alert('', '비밀번호가 일치하지 않습니다. 동일한 비밀번호를 입력해주세요.', [{text: '확인'}]);
+      showAlert('알림', '비밀번호가 일치하지 않습니다. 동일한 비밀번호를 입력해주세요.');
       return;
      }
 
-     setLoading(true);
+     setIsAuthLoading(true);
 
     try {
       isSignUp ? await signUp(info) : await logIn(info);
 
     } catch (e) {
-      Alert.alert('', '일시적인 오류입니다. 잠시 후 다시 이용해주세요.', [{text: '확인'}]);
+      showAlert('오류', '일시적인 오류입니다. 잠시 후 다시 이용해주세요.');
       console.log("error : " + e);
     } finally {
-      setLoading(false);
+      setIsAuthLoading(false);
     }
    };
 
   const logIn = async ({email, password}) => {
-    setSplash(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setSplash(false);
-
     if (error) {
-      Alert.alert('', '아이디 또는 패스워드를 확인해주세요.', [{text: '확인'}]);
-      return;
+      showAlert('로그인 실패', '아이디 또는 패스워드를 확인해주세요.');
     }
-    navigation.reset({routes: [{name: 'Main'}]});
-  }
+  };
 
   const signUp = async ({email, password}) => {
-    setSplash(true);
-    const { error } = await supabase.auth.signUp({ email, password });
-    setSplash(false);
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.signUp({ email, password });
 
     if (error) {
-      Alert.alert('SignUp Error', error.message, [{text: '확인'}]);
-      return;
+      showAlert('가입 실패', error.message);
+    } else {
+      if (!session) {
+        showAlert('알림', '인증 이메일이 발송되었습니다. 이메일을 확인해주세요.');
+      }
     }
+  };
 
-    Alert.alert(
-      '회원가입이 완료되었습니다.', '로그인 후 이용해주세요.', [
-          {text: '로그인', onPress: () => navigation.navigate('SignUp', {isSignUp: false})},
-      ]
-    );
-  }
+   return (
+     <SafeAreaView style={styles.block}>
+       <KeyboardAwareScrollView
+         contentContainerStyle={styles.scrollContent}
+         extraScrollHeight={20}
+         enableOnAndroid={true}
+       >
+         <View style={styles.header}>
+           <Text style={styles.title}>아이템 다이어리</Text>
+           <Text style={styles.subtitle}>
+             {isSignUp ? '계정을 생성하고 나만의 아이템을 관리하세요' : '반가워요! 다시 만나서 기뻐요'}
+           </Text>
+         </View>
 
-  // const onDemoLogin = async () => {
-  //   setLoading(true);
-  //   try {
-  //     await logIn({ email: '', password: '' });
-  //   } catch (e) {
-  //     Alert.alert('', '일시적인 오류입니다. 잠시 후 다시 이용해주세요.', [{text: '확인'}]);
-  //     console.log("error : " + e);
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
+         <SignUpForm
+           isSignUp={isSignUp}
+           form={form}
+           createChangeTextHandler={createChangeTextHandler}
+           onSubmit={onSubmit}
+         />
 
- return(
-    <KeyboardAvoidingView
-      style={styles.keyboardAvoidingView}
-      behavior={Platform.select({ios: 'padding'})}
-      onPress={Keyboard.dismiss}
-    >
-      <SafeAreaView style={styles.fullScreen}>
-        <Text style={styles.text}>아이템 다이어리</Text>
-        <View style={styles.form}>
-          <SignUpForm
-            isSignUp={isSignUp}
-            onSubmit={onSubmit}
-            form={form}
-            createChangeTextHandler={createChangeTextHandler}
-          />
-          <SignUpButton
-            isSignUp={isSignUp}
-            onSubmit={onSubmit}
-            loading={loading}
-          />
-          {!isSignUp && (
-            <>
-              <View style={styles.divider}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>또는</Text>
-                <View style={styles.dividerLine} />
-              </View>
-              {/* <TouchableOpacity style={styles.demoButton} onPress={onDemoLogin} disabled={loading}>
-                <Text style={styles.demoButtonText}>데모 계정으로 체험하기</Text>
-              </TouchableOpacity> */}
-            </>
-          )}
-        </View>
-        {splash && <Splash />}
-      </SafeAreaView>
-    </KeyboardAvoidingView>
-  );
+         <SignUpButton
+           isSignUp={isSignUp}
+           onSubmit={onSubmit}
+           loading={isAuthLoading} // 버튼 내부 로딩만 사용
+         />
+
+         <TouchableOpacity
+           onPress={() => navigation.setParams({isSignUp: !isSignUp})}
+           style={styles.footer}
+         >
+           <Text style={styles.footerText}>
+             {isSignUp ? '이미 계정이 있으신가요? ' : '아직 계정이 없으신가요? '}
+             <Text style={styles.footerLink}>{isSignUp ? '로그인' : '회원가입'}</Text>
+           </Text>
+         </TouchableOpacity>
+       </KeyboardAwareScrollView>
+       
+       <CustomAlert
+         visible={alertConfig.visible}
+         title={alertConfig.title}
+         message={alertConfig.message}
+         onConfirm={alertConfig.onConfirm}
+       />
+     </SafeAreaView>
+   );
  }
 
  const styles = StyleSheet.create({
-  fullScreen: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  text: {
-    fontSize: 32,
-    fontWeight: 'bold',
-  },
-  form: {
-    marginTop: 64,
-    width: '100%',
-    paddingHorizontal: 16,
-  },
-  keyboardAvoidingView: {
-    flex: 1,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E5E7EB',
-  },
-  dividerText: {
-    marginHorizontal: 12,
-    color: '#9CA3AF',
-    fontSize: 13,
-  },
-  demoButton: {
-    marginTop: 12,
-    paddingVertical: 14,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    alignItems: 'center',
-  },
-  demoButtonText: {
-    color: '#6B7280',
-    fontSize: 15,
-  },
+   block: {
+     flex: 1,
+     backgroundColor: 'white',
+   },
+   scrollContent: {
+     flexGrow: 1,
+     paddingHorizontal: 24,
+     paddingTop: 60,
+     paddingBottom: 40,
+   },
+   header: {
+     marginBottom: 48,
+   },
+   title: {
+     fontSize: 32,
+     fontWeight: 'bold',
+     color: '#1a1a1a',
+     marginBottom: 8,
+   },
+   subtitle: {
+     fontSize: 16,
+     color: '#666',
+     lineHeight: 24,
+   },
+   footer: {
+     marginTop: 'auto',
+     alignItems: 'center',
+     paddingVertical: 20,
+   },
+   footerText: {
+     fontSize: 14,
+     color: '#666',
+   },
+   footerLink: {
+     color: '#4287f5',
+     fontWeight: 'bold',
+   }
  });
 
  export default SignUpScreen;
