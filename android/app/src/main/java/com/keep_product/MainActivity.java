@@ -6,6 +6,7 @@ import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint;
 import com.facebook.react.defaults.DefaultReactActivityDelegate;
 
 import android.os.Bundle;
+import androidx.activity.EdgeToEdge;
 import org.devio.rn.splashscreen.SplashScreen;
 
 public class MainActivity extends ReactActivity {
@@ -21,8 +22,9 @@ public class MainActivity extends ReactActivity {
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
-    SplashScreen.show(this);
+    EdgeToEdge.enable(this);
     super.onCreate(savedInstanceState);
+    SplashScreen.show(this);
   }
 
   /**
@@ -35,6 +37,7 @@ public class MainActivity extends ReactActivity {
     return new DefaultReactActivityDelegate(
         this,
         getMainComponentName(),
+        // If you opted-in for the New Architecture, we enable the Fabric Renderer.
         DefaultNewArchitectureEntryPoint.getFabricEnabled());
   }
 }

@@ -4,39 +4,8 @@ plugins {
 }
 apply from: project(':react-native-config').projectDir.getPath() + "/dotenv.gradle"
 
-/**
- * This is the configuration block to customize your React Native Android app.
- * By default you don't need to apply any configuration, just uncomment the lines you need.
- */
 react {
     autolinkLibrariesWithApp()
-
-    /* Folders */
-    //   The root of your project, i.e. where "package.json" lives. Default is '..'
-    // root = file("../")
-    //   The folder where the react-native NPM package is. Default is ../node_modules/react-native
-    // reactNativeDir = file("../node_modules/react-native")
-    //   The folder where the react-native Codegen package is. Default is ../node_modules/@react-native/codegen
-    // codegenDir = file("../node_modules/@react-native/codegen")
-    //   The cli.js file which is the React Native CLI entrypoint. Default is ../node_modules/react-native/cli.js
-    // cliFile = file("../node_modules/react-native/cli.js")
-
-    /* Variants */
-    //   The list of variants to that are debuggable. For those we're going to
-    //   skip the bundling of the JS bundle and the assets. By default is just 'debug'.
-    //   If you add flavors like lite, entity, etc. you'll have to list your debuggableVariants.
-    // debuggableVariants = ["liteDebug", "entityDebug"]
-
-    /* Bundling */
-    //   A list of extra flags to pass to the 'bundle' commands.
-    //   See https://github.com/react-native-community/cli/blob/main/docs/commands.md#bundle
-    // extraPackagerArgs = []
-
-    /* Hermes Commands */
-    //   The hermes compiler command to run. By default it is 'hermesc'
-    // hermesCommand = "$rootDir/../node_modules/react-native/sdks/hermesc/%OS-BIN%/hermesc"
-    //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
-    // hermesFlags = ["-O", "-output-source-map"]
 }
 
 /**
@@ -55,9 +24,15 @@ android {
         applicationId "com.openended.keep_product"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 10
-        versionName "1.1.0"
+        versionCode 18
+        versionName "1.1.8"
         multiDexEnabled true
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
     }
 
     signingConfigs {
@@ -69,15 +44,13 @@ android {
         }
         release {
             storeFile file('upload.keystore')
-            storePassword System.getenv("UPLOAD_STORE_PASSWORD") ?: ""
+            storePassword project.findProperty('UPLOAD_STORE_PASSWORD') ?: System.getenv("UPLOAD_STORE_PASSWORD") ?: ""
             keyAlias 'upload'
-            keyPassword System.getenv("UPLOAD_KEY_PASSWORD") ?: ""
+            keyPassword project.findProperty('UPLOAD_KEY_PASSWORD') ?: System.getenv("UPLOAD_KEY_PASSWORD") ?: ""
         }
     }
+
     buildTypes {
-        debug {
-            signingConfig signingConfigs.debug
-        }
         release {
             signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
@@ -87,8 +60,8 @@ android {
 }
 
 dependencies {
-    // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    implementation("androidx.activity:activity:1.9.3") // EdgeToEdge 지원 필수 라이브러리
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
