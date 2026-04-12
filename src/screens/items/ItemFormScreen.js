@@ -25,6 +25,7 @@ import {supabase} from '../../lib/supabase';
 
 function ItemFormScreen({navigation, route}) {
   const existingItem = route.params?.item;
+  const prefilledData = route.params?.prefilledData;
   const isEdit = !!existingItem;
 
   const {pickImage, uploadImage, previewUri, setExistingImageUrl} =
@@ -54,6 +55,7 @@ function ItemFormScreen({navigation, route}) {
 
   useEffect(() => {
     if (existingItem) {
+      // 기존 아이템 수정 모드
       setTitle(existingItem.name || '');
       setDate(new Date(existingItem.item_date || Date.now()));
       setPrice(formatPrice(existingItem.price));
@@ -65,8 +67,21 @@ function ItemFormScreen({navigation, route}) {
       if (existingItem.store_name || existingItem.link || existingItem.memo || existingItem.category_id) {
         setShowExtra(true);
       }
+    } else if (prefilledData) {
+      // 바코드 스캔 등으로 넘어온 자동 입력 데이터
+      setTitle(prefilledData.name || '');
+      setPrice(formatPrice(prefilledData.price) || '');
+      setStoreName(prefilledData.store_name || '');
+      setLink(prefilledData.link || '');
+      setCategoryId(prefilledData.category_id || null);
+      if (prefilledData.image_url) {
+        setExistingImageUrl(prefilledData.image_url);
+      }
+      if (prefilledData.link || prefilledData.store_name || prefilledData.category_id) {
+        setShowExtra(true);
+      }
     }
-  }, []);
+  }, [existingItem, prefilledData]);
 
   const showAlert = (config) => {
     setAlertConfig({...config, visible: true});

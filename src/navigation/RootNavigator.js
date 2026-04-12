@@ -4,6 +4,7 @@ import SplashScreen from 'react-native-splash-screen';
 import SignUpScreen from '../signup/signUpScreen';
 import TabNavigator from './TabNavigator';
 import ItemFormScreen from '../screens/items/ItemFormScreen';
+import BarcodeScanScreen from '../screens/items/BarcodeScanScreen';
 import DetailScreen from '../screens/items/DetailScreen';
 import UserQuitScreen from '../screens/main/UserQuitScreen';
 import { supabase } from '../lib/supabase';
@@ -44,6 +45,7 @@ function RootNavigator() {
             component={ItemFormScreen}
             options={{presentation: 'modal'}}
           />
+          <Stack.Screen name="BarcodeScan" component={BarcodeScanScreen} />
           <Stack.Screen name="Detail" component={DetailScreen} />
           <Stack.Screen name="Quit" component={UserQuitScreen} />
         </>

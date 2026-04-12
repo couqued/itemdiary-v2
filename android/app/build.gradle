@@ -52,7 +52,9 @@ android {
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            // debug : 기기 테스트용 디버그 서명
+            //signingConfig signingConfigs.release
+            signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

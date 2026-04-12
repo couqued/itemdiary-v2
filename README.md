@@ -21,8 +21,8 @@
 | 최초 개발 | 2022.09 ~ 2022.11 |
 | 최초 Android 배포 | 2022.11 |
 | 백엔드 Supabase 전환 | 2026.04 |
-| UI/UX 리뉴얼 계획 수립 | 2026.04 |
-| 최종 빌드 (versionCode 10) | 2026.04 |
+| UI/UX 리뉴얼 구현 및 기능 개선 | 2026.04 |
+| 최종 빌드 (versionCode 19) | 2026.04 |
 
 ---
 
@@ -53,8 +53,11 @@
 
 - 아이템 목록 조회 (그리드 / 리스트 뷰)
 - 아이템 등록 (이름, 날짜, 가격, 카테고리, 구입처, 링크, 메모, 이미지)
+- 실시간 아이템 검색 (Debounce 적용)
 - 아이템 수정 / 삭제
-- 이미지 업로드 및 표시
+- 이미지 업로드 및 확대 보기 (커스텀 모달)
+- 캘린더 기반 지출 내역 조회 (상단 고정 레이아웃)
+- 캘린더 빠른 이동 (년/월 선택 팝업 및 '오늘' 버튼)
 - 카테고리·날짜·가격 필터 및 검색
 - 회원가입 / 로그인 / 로그아웃
 - 회원 탈퇴 (본인 데이터 전체 삭제)
@@ -248,30 +251,19 @@ RootStack (Stack Navigator)
 
 | 경로 | 설명 |
 |---|---|
-| `src/constants/colors.js` | 컬러 팔레트 |
-| `src/constants/typography.js` | 타이포그래피 스케일 |
-| `src/constants/spacing.js` | 스페이싱 / 반경 |
-| `src/components/ui/Button.js` | 공통 버튼 |
-| `src/components/ui/Card.js` | 공통 카드 |
-| `src/components/ui/Badge.js` | 카테고리 뱃지 |
-| `src/components/ui/Input.js` | 공통 인풋 |
-| `src/components/ui/LoadingOverlay.js` | 로딩 오버레이 |
-| `src/components/ui/EmptyState.js` | 빈 상태 |
-| `src/components/ui/CategoryChips.js` | 카테고리 칩 |
-| `src/components/ui/ItemCard.js` | 아이템 카드 |
-| `src/hooks/useImagePicker.js` | 이미지 선택 훅 |
-| `src/hooks/useCategories.js` | 카테고리 조회 훅 |
-| `src/hooks/useItems.js` | 아이템 목록 훅 |
-| `src/utils/formatPrice.js` | 가격 포맷 |
-| `src/utils/formatDate.js` | 날짜 포맷 |
-| `src/navigation/RootNavigator.js` | 루트 네비게이터 |
-| `src/navigation/TabNavigator.js` | 하단 탭 네비게이터 |
-| `src/screens/ListScreen.js` | 홈 화면 |
-| `src/screens/ItemFormScreen.js` | 등록/수정 통합 |
-| `src/screens/DetailScreen.js` | 상세 화면 |
-| `src/screens/SearchScreen.js` | 검색 화면 |
-| `src/screens/ProfileScreen.js` | 설정/프로필 |
-| `src/screens/UserQuitScreen.js` | 회원 탈퇴 |
+| `src/constants/` | 컬러, 타이포그래피, 스페이싱 상수 |
+| `src/components/ui/` | 공통 UI 컴포넌트 (Button, Input, Alert 등) |
+| `src/components/ItemCard.js` | 아이템 카드 컴포넌트 |
+| `src/components/CategoryChips.js` | 카테고리 칩 컴포넌트 |
+| `src/hooks/` | 커스텀 훅 (useItems, useCalendarItems 등) |
+| `src/utils/` | 유틸리티 함수 (가격/날짜 포맷) |
+| `src/navigation/` | 네비게이션 설정 (Root, Tab) |
+| `src/screens/main/ListScreen.js` | 홈 (실시간 검색 및 목록) |
+| `src/screens/main/SearchScreen.js` | 캘린더 (지출 내역 및 이동) |
+| `src/screens/items/ItemFormScreen.js` | 등록/수정 통합 폼 |
+| `src/screens/items/DetailScreen.js` | 상세 정보 및 이미지 확대 |
+| `src/screens/main/ProfileScreen.js` | 설정 및 프로필 |
+| `src/screens/main/UserQuitScreen.js` | 회원 탈퇴 |
 | `supabase_migration.sql` | DB 마이그레이션 SQL |
 
 ---
@@ -339,6 +331,8 @@ UPLOAD_KEY_PASSWORD='...' \
 | 8 | 1.1.0 | Supabase 전환, Firebase 제거 |
 | 9 | 1.1.0 | 데모 로그인 버튼, 앱 아이콘 복원 |
 | 10 | 1.1.0 | targetSdkVersion 35 대응 |
+| 11-18 | 1.2.0 | 내부 테스트 및 UI 개선 |
+| 19 | 1.2.1 | 실시간 검색, 캘린더 이동, 이미지 확대 기능 추가 및 버그 수정 |
 
 ---
 

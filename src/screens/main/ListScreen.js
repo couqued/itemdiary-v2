@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useRef} from 'react';
 import debounce from 'lodash.debounce';
 import {
   View,
@@ -10,6 +10,8 @@ import {
   BackHandler,
   ToastAndroid,
   StatusBar,
+  Animated,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {useIsFocused} from '@react-navigation/native';
@@ -42,6 +44,21 @@ function ListScreen({navigation}) {
   const [sortIndex, setSortIndex] = useState(0);
   const [searchText, setSearchText] = useState('');
   const [categoryId, setCategoryId] = useState(null);
+
+  // Speed Dial State
+  const [isExpanded, setIsExpanded] = useState(false);
+  const animation = useRef(new Animated.Value(0)).current;
+
+  const toggleSpeedDial = () => {
+    const toValue = isExpanded ? 0 : 1;
+    Animated.spring(animation, {
+      toValue,
+      useNativeDriver: true,
+      friction: 5,
+      tension: 40,
+    }).start();
+    setIsExpanded(!isExpanded);
+  };
 
   const getOptions = useCallback(
     (overrides = {}) => {
@@ -98,6 +115,10 @@ function ListScreen({navigation}) {
 
     const backAction = () => {
       if (navigation.isFocused()) {
+        if (isExpanded) {
+          toggleSpeedDial();
+          return true;
+        }
         if (!isExitApp) {
           ToastAndroid.show(
             '뒤로 버튼을 한번 더 누르시면 종료됩니다.',
@@ -118,7 +139,7 @@ function ListScreen({navigation}) {
 
     const sub = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => sub.remove();
-  }, [navigation]);
+  }, [navigation, isExpanded]);
 
   const toggleLayout = async () => {
     const next = !isGrid;
@@ -150,8 +171,14 @@ function ListScreen({navigation}) {
     navigation.navigate('Detail', {data: item});
   };
 
-  const goWrite = () => {
+  const goWriteManual = () => {
+    toggleSpeedDial();
     navigation.navigate('ItemForm');
+  };
+
+  const goBarcodeScan = () => {
+    toggleSpeedDial();
+    navigation.navigate('BarcodeScan');
   };
 
   const renderItem = useCallback(
@@ -180,6 +207,38 @@ function ListScreen({navigation}) {
     },
     [isGrid, categories, getCategoryById],
   );
+
+  // Animation Styles
+  const barcodeStyle = {
+    transform: [
+      {scale: animation},
+      {
+        translateY: animation.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -70],
+        }),
+      },
+    ],
+    opacity: animation,
+  };
+
+  const manualStyle = {
+    transform: [
+      {scale: animation},
+      {
+        translateY: animation.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -130],
+        }),
+      },
+    ],
+    opacity: animation,
+  };
+
+  const rotation = animation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '45deg'],
+  });
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right']}>
@@ -255,13 +314,40 @@ function ListScreen({navigation}) {
         style={styles.list}
       />
 
+      {/* Speed Dial Overlay */}
+      {isExpanded && (
+        <Pressable style={styles.overlay} onPress={toggleSpeedDial} />
+      )}
+
+      {/* Sub Buttons */}
+      <Animated.View style={[styles.subFabContainer, manualStyle]}>
+        <Text style={styles.subFabLabel}>직접 등록</Text>
+        <Pressable
+          onPress={goWriteManual}
+          style={[styles.subFab, {backgroundColor: colors.surface}]}>
+          <Ionicons name="create-outline" size={24} color={colors.primary} />
+        </Pressable>
+      </Animated.View>
+
+      <Animated.View style={[styles.subFabContainer, barcodeStyle]}>
+        <Text style={styles.subFabLabel}>바코드 스캔</Text>
+        <Pressable
+          onPress={goBarcodeScan}
+          style={[styles.subFab, {backgroundColor: colors.surface}]}>
+          <Ionicons name="barcode-outline" size={24} color={colors.primary} />
+        </Pressable>
+      </Animated.View>
+
+      {/* Main FAB */}
       <Pressable
-        onPress={goWrite}
+        onPress={toggleSpeedDial}
         style={({pressed}) => [
           styles.fab,
           pressed && styles.fabPressed,
         ]}>
-        <Ionicons name="add" size={28} color={colors.textInverse} />
+        <Animated.View style={{transform: [{rotate: rotation}]}}>
+          <Ionicons name="add" size={28} color={colors.textInverse} />
+        </Animated.View>
       </Pressable>
 
       {loading && items.length === 0 && <LoadingOverlay />}
@@ -336,6 +422,11 @@ const styles = StyleSheet.create({
   layoutToggle: {
     padding: spacing.sm,
   },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    zIndex: 15,
+  },
   fab: {
     position: 'absolute',
     right: spacing.lg,
@@ -351,11 +442,43 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 8,
+    zIndex: 20,
   },
   fabPressed: {
     backgroundColor: colors.primaryDark,
     transform: [{scale: 0.95}],
   },
+  subFabContainer: {
+    position: 'absolute',
+    right: spacing.lg + 4,
+    bottom: spacing.lg + 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 19,
+  },
+  subFab: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  subFabLabel: {
+    ...typography.captionBold,
+    color: colors.textInverse,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+    marginRight: spacing.sm,
+    overflow: 'hidden',
+  },
 });
 
 export default ListScreen;
+
