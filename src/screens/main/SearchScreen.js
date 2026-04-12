@@ -73,6 +73,19 @@ function SearchScreen({navigation}) {
     }, 100);
   };
 
+  const isTodayMonth =
+    currentYear === today.getFullYear() && currentMonth === today.getMonth() + 1;
+
+  const goToToday = () => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth() + 1;
+    setCurrentYear(y);
+    setCurrentMonth(m);
+    setSelectedDate(null);
+    fetchMonthDots(y, m);
+  };
+
   const markedDatesWithSelected = selectedDate
     ? {
         ...markedDates,
@@ -176,6 +189,18 @@ function SearchScreen({navigation}) {
         style={styles.list}
       />
 
+      {!isTodayMonth && (
+        <Pressable
+          onPress={goToToday}
+          style={({pressed}) => [
+            styles.todayBtn,
+            pressed && styles.todayBtnPressed,
+          ]}>
+          <Ionicons name="today-outline" size={18} color={colors.primary} />
+          <Text style={styles.todayBtnText}>오늘</Text>
+        </Pressable>
+      )}
+
       <DateTimePickerModal
         isVisible={pickerVisible}
         mode="date"
@@ -186,6 +211,8 @@ function SearchScreen({navigation}) {
         confirmTextIOS="선택"
         cancelTextIOS="취소"
         headerTextIOS="년월 선택"
+        confirmTextAndroid="확인"
+        cancelTextAndroid="취소"
       />
 
       {(loadingDots || loadingDay) && <LoadingOverlay />}
@@ -249,6 +276,36 @@ const styles = StyleSheet.create({
   emptyText: {
     ...typography.body,
     color: colors.textTertiary,
+  },
+  todayBtn: {
+    position: 'absolute',
+    bottom: spacing.lg,
+    left: '50%',
+    marginLeft: -40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    width: 80,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  todayBtnPressed: {
+    backgroundColor: colors.surfaceSecondary,
+    transform: [{scale: 0.95}],
+  },
+  todayBtnText: {
+    ...typography.captionBold,
+    color: colors.primary,
+    marginLeft: 4,
   },
 });
 
