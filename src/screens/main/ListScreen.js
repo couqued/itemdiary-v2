@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback, useRef} from 'react';
+import React, {useState, useEffect, useCallback, useRef, useMemo} from 'react';
 import debounce from 'lodash.debounce';
 import {
   View,
@@ -29,7 +29,7 @@ import {LoadingOverlay} from '../../components/ui/LoadingOverlay';
 
 const SORT_OPTIONS = [
   {key: 'created_at', label: '최신순', asc: false},
-  {key: 'item_date', label: '구입날짜순', asc: false},
+  {key: 'item_date', label: '구입날짜순', wishLabel: '등록날짜순', asc: false},
   {key: 'price', label: '가격순', asc: false},
   {key: 'name', label: '이름순', asc: true},
 ];
@@ -44,6 +44,7 @@ function ListScreen({navigation}) {
   const [sortIndex, setSortIndex] = useState(0);
   const [searchText, setSearchText] = useState('');
   const [categoryId, setCategoryId] = useState(null);
+  const [isWishlistTab, setIsWishlistTab] = useState(false);
 
   // Speed Dial State
   const [isExpanded, setIsExpanded] = useState(false);
@@ -60,21 +61,26 @@ function ListScreen({navigation}) {
     setIsExpanded(!isExpanded);
   };
 
+  const filtersRef = useRef({sortIndex, categoryId, isWishlistTab, searchText});
+  filtersRef.current = {sortIndex, categoryId, isWishlistTab, searchText};
+
   const getOptions = useCallback(
     (overrides = {}) => {
-      const sort = SORT_OPTIONS[overrides.sortIdx !== undefined ? overrides.sortIdx : sortIndex];
+      const current = filtersRef.current;
+      const sort = SORT_OPTIONS[overrides.sortIdx !== undefined ? overrides.sortIdx : current.sortIndex];
       return {
         sortBy: sort.key,
         sortAsc: sort.asc,
-        search: overrides.search !== undefined ? overrides.search : searchText,
-        categoryId: overrides.catId !== undefined ? overrides.catId : categoryId,
+        search: overrides.search !== undefined ? overrides.search : current.searchText,
+        categoryId: overrides.catId !== undefined ? overrides.catId : current.categoryId,
+        isWishlist: overrides.isWishlist !== undefined ? overrides.isWishlist : current.isWishlistTab,
       };
     },
-    [sortIndex, categoryId], // searchText를 제거하여 함수 신원 유지
+    [],
   );
 
-  const debouncedSearch = useCallback(
-    debounce(text => {
+  const debouncedSearch = useMemo(
+    () => debounce(text => {
       fetchItems(getOptions({search: text}));
     }, 300),
     [fetchItems, getOptions],
@@ -105,9 +111,9 @@ function ListScreen({navigation}) {
 
   useEffect(() => {
     if (isFocused) {
-      fetchItems(getOptions({search: searchText}));
+      fetchItems(getOptions());
     }
-  }, [isFocused]);
+  }, [isFocused, isWishlistTab]);
 
   useEffect(() => {
     let isExitApp = false;
@@ -173,12 +179,12 @@ function ListScreen({navigation}) {
 
   const goWriteManual = () => {
     toggleSpeedDial();
-    navigation.navigate('ItemForm');
+    navigation.navigate('ItemForm', {is_wishlist: isWishlistTab});
   };
 
   const goBarcodeScan = () => {
     toggleSpeedDial();
-    navigation.navigate('BarcodeScan');
+    navigation.navigate('BarcodeScan', {is_wishlist: isWishlistTab});
   };
 
   const renderItem = useCallback(
@@ -243,6 +249,19 @@ function ListScreen({navigation}) {
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <View style={styles.stickyHeader}>
+        <View style={styles.tabContainer}>
+          <Pressable
+            onPress={() => setIsWishlistTab(false)}
+            style={[styles.tabBtn, !isWishlistTab && styles.tabBtnActive]}>
+            <Text style={[styles.tabText, !isWishlistTab && styles.tabTextActive]}>아이템</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setIsWishlistTab(true)}
+            style={[styles.tabBtn, isWishlistTab && styles.tabBtnActive]}>
+            <Text style={[styles.tabText, isWishlistTab && styles.tabTextActive]}>찜</Text>
+          </Pressable>
+        </View>
+
         <View style={styles.searchBar}>
           <Ionicons name="search-outline" size={20} color={colors.textTertiary} style={{marginRight: spacing.sm}} />
           <TextInput
@@ -284,7 +303,7 @@ function ListScreen({navigation}) {
                     styles.sortText,
                     sortIndex === i && styles.sortTextActive,
                   ]}>
-                  {opt.label}
+                  {isWishlistTab && opt.wishLabel ? opt.wishLabel : opt.label}
                 </Text>
               </Pressable>
             ))}
@@ -477,6 +496,29 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     marginRight: spacing.sm,
     overflow: 'hidden',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.xs,
+    backgroundColor: colors.background,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabBtnActive: {
+    borderBottomColor: colors.primary,
+  },
+  tabText: {
+    ...typography.bodyBold,
+    color: colors.textTertiary,
+  },
+  tabTextActive: {
+    color: colors.primary,
   },
 });
 

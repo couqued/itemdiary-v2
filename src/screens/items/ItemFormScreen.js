@@ -26,6 +26,7 @@ import {supabase} from '../../lib/supabase';
 function ItemFormScreen({navigation, route}) {
   const existingItem = route.params?.item;
   const prefilledData = route.params?.prefilledData;
+  const initialIsWishlist = route.params?.is_wishlist || false;
   const isEdit = !!existingItem;
 
   const {pickImage, uploadImage, previewUri, setExistingImageUrl} =
@@ -41,6 +42,7 @@ function ItemFormScreen({navigation, route}) {
   const [link, setLink] = useState('');
   const [memo, setMemo] = useState('');
   const [categoryId, setCategoryId] = useState(null);
+  const [isWishlist, setIsWishlist] = useState(initialIsWishlist);
   const [showExtra, setShowExtra] = useState(false);
 
   // Alerts
@@ -145,6 +147,7 @@ function ItemFormScreen({navigation, route}) {
         memo: memo.trim() || null,
         category_id: categoryId,
         image_url: imageUrl,
+        is_wishlist: isWishlist,
       };
 
       if (isEdit) {
@@ -220,7 +223,7 @@ function ItemFormScreen({navigation, route}) {
             returnKeyType="next"
           />
 
-          <Text style={styles.fieldLabel}>구입날짜</Text>
+          <Text style={styles.fieldLabel}>{isWishlist ? '등록날짜' : '구입날짜'}</Text>
           <View style={styles.dateRow}>
             <Pressable
               onPress={() => setDatePickerVisible(true)}

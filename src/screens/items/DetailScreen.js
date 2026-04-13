@@ -33,6 +33,23 @@ function DetailScreen({navigation, route}) {
   const [loading, setLoading] = useState(false);
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [imageModalVisible, setImageModalVisible] = useState(false);
+  const [purchaseVisible, setPurchaseVisible] = useState(false);
+
+  const onPurchaseConfirm = async () => {
+    setPurchaseVisible(false);
+    setLoading(true);
+    const {error} = await supabase
+      .from('items')
+      .update({is_wishlist: false, item_date: new Date().toISOString().split('T')[0], updated_at: new Date().toISOString()})
+      .eq('seq', item.seq);
+    setLoading(false);
+
+    if (error) {
+      Alert.alert('', '처리에 실패하였습니다.');
+      return;
+    }
+    navigation.goBack();
+  };
 
   const onDeleteConfirm = async () => {
     setDeleteVisible(false);
@@ -120,7 +137,7 @@ function DetailScreen({navigation, route}) {
             )}
           </View>
 
-          <InfoRow icon="calendar-outline" label="구입날짜" value={formatDateKo(item.item_date)} />
+          <InfoRow icon="calendar-outline" label={item.is_wishlist ? '등록날짜' : '구입날짜'} value={formatDateKo(item.item_date)} />
           <InfoRow icon="pricetag-outline" label="가격" value={`${formatPrice(item.price)}원`} />
           {!!item.store_name && (
             <InfoRow icon="business-outline" label="구입처" value={item.store_name} />
@@ -142,6 +159,19 @@ function DetailScreen({navigation, route}) {
       </ScrollView>
 
       <View style={styles.actionBar}>
+        {item.is_wishlist && (
+          <Pressable
+            onPress={() => setPurchaseVisible(true)}
+            style={({pressed}) => [
+              styles.actionBtn,
+              styles.purchaseBtn,
+              pressed && {opacity: 0.8},
+              {marginRight: spacing.sm},
+            ]}>
+            <Ionicons name="cart-outline" size={20} color={colors.textInverse} style={{marginRight: spacing.sm}} />
+            <Text style={styles.purchaseBtnText}>구입 완료</Text>
+          </Pressable>
+        )}
         <Pressable
           onPress={() => setDeleteVisible(true)}
           style={({pressed}) => [
@@ -153,6 +183,16 @@ function DetailScreen({navigation, route}) {
           <Text style={styles.deleteBtnText}>삭제하기</Text>
         </Pressable>
       </View>
+
+      <CustomAlert
+        visible={purchaseVisible}
+        title="구입 확인"
+        message="구입 완료 처리하고 아이템 탭으로 이동시킬까요?"
+        confirmText="확인"
+        cancelText="취소"
+        onConfirm={onPurchaseConfirm}
+        onCancel={() => setPurchaseVisible(false)}
+      />
 
       <CustomAlert
         visible={deleteVisible}
@@ -275,6 +315,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: spacing.sm + 4,
     borderRadius: radius.md,
+  },
+  purchaseBtn: {
+    backgroundColor: colors.primary,
+  },
+  purchaseBtnText: {
+    ...typography.captionBold,
+    color: colors.textInverse,
   },
   deleteBtn: {
     backgroundColor: colors.dangerLight,

@@ -18,6 +18,7 @@ export function useCalendarItems() {
       const {data, error} = await supabase
         .from('items')
         .select('item_date, price')
+        .eq('is_wishlist', false)
         .gte('item_date', firstDay)
         .lte('item_date', lastDay);
 
@@ -49,6 +50,7 @@ export function useCalendarItems() {
       const {data, error} = await supabase
         .from('items')
         .select('*')
+        .eq('is_wishlist', false)
         .eq('item_date', dateString)
         .order('created_at', {ascending: false});
 

@@ -11,7 +11,9 @@ export function useItems() {
   const pageRef = useRef(0);
   const hasMoreRef = useRef(true);
 
-  const buildQuery = (query, {sortBy = 'created_at', sortAsc = false, categoryId, search} = {}) => {
+  const buildQuery = (query, {sortBy = 'created_at', sortAsc = false, categoryId, search, isWishlist = false} = {}) => {
+    query = query.eq('is_wishlist', isWishlist);
+
     if (categoryId) {
       query = query.eq('category_id', categoryId);
     }
@@ -79,6 +81,7 @@ export function useItems() {
     items,
     loading,
     refreshing,
+    hasMore: hasMoreRef.current,
     fetchItems,
     fetchMore,
     refresh,

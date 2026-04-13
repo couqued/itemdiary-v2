@@ -18,3 +18,4 @@ buildscript {
 plugins {
     id("com.facebook.react.rootproject")
 }
+
