@@ -24,14 +24,26 @@ android {
         applicationId "com.openended.keep_product"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 19
-        versionName "1.2.1"
+        versionCode 20
+        versionName "1.3.1"
         multiDexEnabled true
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a"
+        }
+        // 16KB 페이지 크기 지원 - ELF 세그먼트 정렬 링커 플래그
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+                cFlags "-D__BIONIC_NO_PAGE_SIZE_MACRO"
+                cppFlags "-D__BIONIC_NO_PAGE_SIZE_MACRO"
+            }
+        }
     }
 
     packaging {
         jniLibs {
             useLegacyPackaging = false
+            keepDebugSymbols += ['**/*.so']
         }
     }
 
@@ -53,8 +65,8 @@ android {
     buildTypes {
         release {
             // debug : 기기 테스트용 디버그 서명
-            //signingConfig signingConfigs.release
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
+            //signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

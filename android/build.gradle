@@ -2,7 +2,7 @@ buildscript {
     ext {
         buildToolsVersion = "36.1.0"
         minSdkVersion = 24
-        compileSdkVersion = 35
+        compileSdkVersion = 36
         targetSdkVersion = 35
         ndkVersion = "27.1.12297006"
     }
@@ -17,5 +17,22 @@ buildscript {
 
 plugins {
     id("com.facebook.react.rootproject")
+}
+
+// 16KB 페이지 크기 지원 - 모든 네이티브 모듈에 링커 플래그 적용
+subprojects { sub ->
+    sub.pluginManager.withPlugin("com.android.library") {
+        sub.android {
+            defaultConfig {
+                externalNativeBuild {
+                    cmake {
+                        arguments "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+                        cFlags "-D__BIONIC_NO_PAGE_SIZE_MACRO"
+                        cppFlags "-D__BIONIC_NO_PAGE_SIZE_MACRO"
+                    }
+                }
+            }
+        }
+    }
 }
 
