@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useRef, useCallback} from 'react';
 import {
   View,
   Text,
@@ -32,6 +32,19 @@ const CATEGORY_NAME_MAP = {
   '식품': '잡화',
   '도서': '잡화',
 };
+const AI_DEBOUNCE_MS = 1200;
+const AI_MIN_LENGTH = 2;
+
+// 1/31 + 1개월이 3/3이 되지 않도록 말일로 맞춘다
+const addMonths = (base, months) => {
+  const d = new Date(base);
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, lastDay));
+  return d;
+};
 
 function ItemFormScreen({navigation, route}) {
   const existingItem = route.params?.item;
@@ -56,9 +69,13 @@ function ItemFormScreen({navigation, route}) {
   const [showExtra, setShowExtra] = useState(false);
 
   const [warrantyDate, setWarrantyDate] = useState(null);
+  // AI 제안으로 설정된 보증 개월 수. 값이 있으면 구입날짜 변경 시 만료일을 다시 계산한다
+  const [warrantyMonths, setWarrantyMonths] = useState(null);
   const [isWarrantyDatePickerVisible, setWarrantyDatePickerVisible] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const lastQueriedRef = useRef('');
+  const aiRequestSeqRef = useRef(0);
 
   // Alerts
   const [alertConfig, setAlertConfig] = useState({
@@ -84,7 +101,7 @@ function ItemFormScreen({navigation, route}) {
       setCategoryId(existingItem.category_id || null);
       setExistingImageUrl(existingItem.image_url || '');
       setWarrantyDate(existingItem.warranty_date ? new Date(existingItem.warranty_date) : null);
-      if (existingItem.store_name || existingItem.link || existingItem.memo || existingItem.category_id) {
+      if (existingItem.link || existingItem.memo) {
         setShowExtra(true);
       }
     } else if (prefilledData) {
@@ -96,7 +113,7 @@ function ItemFormScreen({navigation, route}) {
       if (prefilledData.image_url) {
         setExistingImageUrl(prefilledData.image_url);
       }
-      if (prefilledData.link || prefilledData.store_name || prefilledData.category_id) {
+      if (prefilledData.link) {
         setShowExtra(true);
       }
     }
@@ -116,16 +133,39 @@ function ItemFormScreen({navigation, route}) {
     setDate(d);
   };
 
-  const handleTitleBlur = async () => {
-    if (!title.trim() || isAiLoading || isEdit) return;
+  // 같은 제목은 한 번만 호출하고, 늦게 도착한 이전 요청의 응답은 버린다
+  const requestAiSuggestion = useCallback(async name => {
+    const query = name.trim();
+    if (isEdit || query.length < AI_MIN_LENGTH || query === lastQueriedRef.current) return;
+    lastQueriedRef.current = query;
+    const seq = ++aiRequestSeqRef.current;
     setIsAiLoading(true);
-    const result = await suggestProductInfo(title.trim());
-    setIsAiLoading(false);
-    if (result && (result.category || result.warranty_months > 0)) {
-      setAiSuggestion(result);
-      setShowExtra(true);
+    let result = null;
+    try {
+      result = await suggestProductInfo(query);
+    } catch (e) {
+      result = null;
     }
-  };
+    if (seq !== aiRequestSeqRef.current) return;
+    setIsAiLoading(false);
+    setAiSuggestion(result && (result.category || result.warranty_months > 0) ? result : null);
+  }, [isEdit]);
+
+  // 입력을 멈추면 자동으로 제안 요청 (포커스 해제 시에는 즉시)
+  useEffect(() => {
+    if (isEdit) return;
+    if (!title.trim()) {
+      aiRequestSeqRef.current++;
+      lastQueriedRef.current = '';
+      setIsAiLoading(false);
+      setAiSuggestion(null);
+      return;
+    }
+    const timer = setTimeout(() => requestAiSuggestion(title), AI_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [title, isEdit, requestAiSuggestion]);
+
+  const handleTitleBlur = () => requestAiSuggestion(title);
 
   const applyAiSuggestion = () => {
     if (!aiSuggestion) return;
@@ -133,11 +173,19 @@ function ItemFormScreen({navigation, route}) {
     const cat = categories.find(c => c.name === catName);
     if (cat) setCategoryId(cat.id);
     if (aiSuggestion.warranty_months > 0) {
-      const d = new Date(date);
-      d.setMonth(d.getMonth() + aiSuggestion.warranty_months);
-      setWarrantyDate(d);
+      setWarrantyMonths(aiSuggestion.warranty_months);
     }
     setAiSuggestion(null);
+  };
+
+  useEffect(() => {
+    if (warrantyMonths) setWarrantyDate(addMonths(date, warrantyMonths));
+  }, [date, warrantyMonths]);
+
+  // 사용자가 만료일을 직접 지정/초기화하면 자동 계산을 멈춘다
+  const setWarrantyDateManually = d => {
+    setWarrantyMonths(null);
+    setWarrantyDate(d);
   };
 
   const handleSave = () => {
@@ -290,6 +338,14 @@ function ItemFormScreen({navigation, route}) {
             </View>
           )}
 
+          {/* AI 제안이 채우는 필드는 배너 바로 아래에 둬서 적용 결과가 바로 보이도록 */}
+          <Text style={styles.fieldLabel}>카테고리</Text>
+          <CategoryChips
+            categories={categories}
+            selectedId={categoryId}
+            onSelect={setCategoryId}
+          />
+
           <Text style={styles.fieldLabel}>{isWishlist ? '등록날짜' : '구입날짜'}</Text>
           <View style={styles.dateRow}>
             <Pressable
@@ -320,6 +376,37 @@ function ItemFormScreen({navigation, route}) {
             }}
             onCancel={() => setDatePickerVisible(false)}
           />
+
+          {/* 보증 만료일 (가전/가구 카테고리만 표시) */}
+          {showWarrantyField && (
+            <>
+              <Text style={styles.fieldLabel}>보증 만료일</Text>
+              <View style={styles.dateRow}>
+                <Pressable
+                  onPress={() => setWarrantyDatePickerVisible(true)}
+                  style={styles.dateButton}>
+                  <Ionicons name="shield-checkmark-outline" size={18} color={colors.textSecondary} style={{marginRight: spacing.sm}} />
+                  <Text style={styles.dateText}>
+                    {warrantyDate ? formatDateKo(warrantyDate) : '날짜 선택'}
+                  </Text>
+                </Pressable>
+                {warrantyDate && (
+                  <Pressable onPress={() => setWarrantyDateManually(null)} style={styles.quickDateBtn}>
+                    <Text style={styles.quickDateText}>초기화</Text>
+                  </Pressable>
+                )}
+              </View>
+              <DateTimePickerModal
+                isVisible={isWarrantyDatePickerVisible}
+                mode="date"
+                onConfirm={d => {
+                  setWarrantyDateManually(d);
+                  setWarrantyDatePickerVisible(false);
+                }}
+                onCancel={() => setWarrantyDatePickerVisible(false)}
+              />
+            </>
+          )}
 
           <Input
             label="가격"
@@ -357,44 +444,6 @@ function ItemFormScreen({navigation, route}) {
 
         {showExtra && (
           <View style={styles.section}>
-            <Text style={styles.fieldLabel}>카테고리</Text>
-            <CategoryChips
-              categories={categories}
-              selectedId={categoryId}
-              onSelect={setCategoryId}
-            />
-
-            {/* 보증 만료일 (가전/가구 카테고리만 표시) */}
-            {showWarrantyField && (
-              <>
-                <Text style={styles.fieldLabel}>보증 만료일</Text>
-                <View style={styles.dateRow}>
-                  <Pressable
-                    onPress={() => setWarrantyDatePickerVisible(true)}
-                    style={styles.dateButton}>
-                    <Ionicons name="shield-checkmark-outline" size={18} color={colors.textSecondary} style={{marginRight: spacing.sm}} />
-                    <Text style={styles.dateText}>
-                      {warrantyDate ? formatDateKo(warrantyDate) : '날짜 선택'}
-                    </Text>
-                  </Pressable>
-                  {warrantyDate && (
-                    <Pressable onPress={() => setWarrantyDate(null)} style={styles.quickDateBtn}>
-                      <Text style={styles.quickDateText}>초기화</Text>
-                    </Pressable>
-                  )}
-                </View>
-                <DateTimePickerModal
-                  isVisible={isWarrantyDatePickerVisible}
-                  mode="date"
-                  onConfirm={d => {
-                    setWarrantyDate(d);
-                    setWarrantyDatePickerVisible(false);
-                  }}
-                  onCancel={() => setWarrantyDatePickerVisible(false)}
-                />
-              </>
-            )}
-
             <Input
               label="링크"
               value={link}
@@ -403,7 +452,6 @@ function ItemFormScreen({navigation, route}) {
               maxLength={200}
               keyboardType="url"
               returnKeyType="next"
-              style={{marginTop: spacing.sm}}
             />
 
             <Input
