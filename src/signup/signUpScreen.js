@@ -143,6 +143,15 @@
            loading={isAuthLoading} // 버튼 내부 로딩만 사용
          />
 
+         {!isSignUp && (
+           <TouchableOpacity
+             onPress={() => navigation.push('ForgotPassword')}
+             style={styles.forgotPassword}
+           >
+             <Text style={styles.forgotPasswordText}>비밀번호를 잊으셨나요?</Text>
+           </TouchableOpacity>
+         )}
+
          <TouchableOpacity
            onPress={() => navigation.setParams({isSignUp: !isSignUp})}
            style={styles.footer}
@@ -193,6 +202,15 @@
      marginTop: 'auto',
      alignItems: 'center',
      paddingVertical: 20,
+   },
+   forgotPassword: {
+     alignItems: 'center',
+     paddingVertical: 12,
+     marginTop: 8,
+   },
+   forgotPasswordText: {
+     fontSize: 14,
+     color: '#4287f5',
    },
    footerText: {
      fontSize: 14,

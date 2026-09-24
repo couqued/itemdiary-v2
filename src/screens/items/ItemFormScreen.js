@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
@@ -21,7 +22,16 @@ import {useImagePicker} from '../../hooks/useImagePicker';
 import {useCategories} from '../../hooks/useCategories';
 import {formatPrice, parsePrice} from '../../utils/formatPrice';
 import {formatDateKo, formatDateISO} from '../../utils/formatDate';
-import {supabase} from '../../lib/supabase';
+import {supabase, suggestProductInfo} from '../../lib/supabase';
+
+const WARRANTY_CATEGORIES = ['가전', '가구', '전자기기'];
+const CATEGORY_NAME_MAP = {
+  '전자기기': '가전',
+  '생활용품': '잡화',
+  '뷰티': '잡화',
+  '식품': '잡화',
+  '도서': '잡화',
+};
 
 function ItemFormScreen({navigation, route}) {
   const existingItem = route.params?.item;
@@ -45,6 +55,11 @@ function ItemFormScreen({navigation, route}) {
   const [isWishlist, setIsWishlist] = useState(initialIsWishlist);
   const [showExtra, setShowExtra] = useState(false);
 
+  const [warrantyDate, setWarrantyDate] = useState(null);
+  const [isWarrantyDatePickerVisible, setWarrantyDatePickerVisible] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+
   // Alerts
   const [alertConfig, setAlertConfig] = useState({
     visible: false,
@@ -55,9 +70,11 @@ function ItemFormScreen({navigation, route}) {
     confirmText: '확인',
   });
 
+  const selectedCategory = categories.find(c => c.id === categoryId);
+  const showWarrantyField = selectedCategory && WARRANTY_CATEGORIES.includes(selectedCategory.name);
+
   useEffect(() => {
     if (existingItem) {
-      // 기존 아이템 수정 모드
       setTitle(existingItem.name || '');
       setDate(new Date(existingItem.item_date || Date.now()));
       setPrice(formatPrice(existingItem.price));
@@ -66,11 +83,11 @@ function ItemFormScreen({navigation, route}) {
       setMemo(existingItem.memo || '');
       setCategoryId(existingItem.category_id || null);
       setExistingImageUrl(existingItem.image_url || '');
+      setWarrantyDate(existingItem.warranty_date ? new Date(existingItem.warranty_date) : null);
       if (existingItem.store_name || existingItem.link || existingItem.memo || existingItem.category_id) {
         setShowExtra(true);
       }
     } else if (prefilledData) {
-      // 바코드 스캔 등으로 넘어온 자동 입력 데이터
       setTitle(prefilledData.name || '');
       setPrice(formatPrice(prefilledData.price) || '');
       setStoreName(prefilledData.store_name || '');
@@ -97,6 +114,30 @@ function ItemFormScreen({navigation, route}) {
     const d = new Date();
     d.setDate(d.getDate() - daysAgo);
     setDate(d);
+  };
+
+  const handleTitleBlur = async () => {
+    if (!title.trim() || isAiLoading || isEdit) return;
+    setIsAiLoading(true);
+    const result = await suggestProductInfo(title.trim());
+    setIsAiLoading(false);
+    if (result && (result.category || result.warranty_months > 0)) {
+      setAiSuggestion(result);
+      setShowExtra(true);
+    }
+  };
+
+  const applyAiSuggestion = () => {
+    if (!aiSuggestion) return;
+    const catName = CATEGORY_NAME_MAP[aiSuggestion.category] || aiSuggestion.category;
+    const cat = categories.find(c => c.name === catName);
+    if (cat) setCategoryId(cat.id);
+    if (aiSuggestion.warranty_months > 0) {
+      const d = new Date(date);
+      d.setMonth(d.getMonth() + aiSuggestion.warranty_months);
+      setWarrantyDate(d);
+    }
+    setAiSuggestion(null);
   };
 
   const handleSave = () => {
@@ -148,6 +189,7 @@ function ItemFormScreen({navigation, route}) {
         category_id: categoryId,
         image_url: imageUrl,
         is_wishlist: isWishlist,
+        warranty_date: warrantyDate ? formatDateISO(warrantyDate) : null,
       };
 
       if (isEdit) {
@@ -218,10 +260,35 @@ function ItemFormScreen({navigation, route}) {
             label="제목"
             value={title}
             onChangeText={setTitle}
+            onBlur={handleTitleBlur}
             placeholder="아이템 이름"
             maxLength={20}
             returnKeyType="next"
           />
+
+          {/* AI 로딩 / 제안 배너 */}
+          {isAiLoading && (
+            <View style={styles.aiBanner}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.aiBannerText}>AI가 정보를 분석 중...</Text>
+            </View>
+          )}
+          {aiSuggestion && !isAiLoading && (
+            <View style={styles.aiBanner}>
+              <Text style={styles.aiBannerText}>
+                AI 제안: {aiSuggestion.category}
+                {aiSuggestion.warranty_months > 0 ? ` · 보증 ${aiSuggestion.warranty_months}개월` : ''}
+              </Text>
+              <View style={styles.aiBannerActions}>
+                <Pressable onPress={applyAiSuggestion} style={styles.aiBannerBtn}>
+                  <Text style={styles.aiBannerBtnText}>적용</Text>
+                </Pressable>
+                <Pressable onPress={() => setAiSuggestion(null)} style={styles.aiBannerBtnOutline}>
+                  <Text style={styles.aiBannerBtnOutlineText}>무시</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
 
           <Text style={styles.fieldLabel}>{isWishlist ? '등록날짜' : '구입날짜'}</Text>
           <View style={styles.dateRow}>
@@ -296,6 +363,37 @@ function ItemFormScreen({navigation, route}) {
               selectedId={categoryId}
               onSelect={setCategoryId}
             />
+
+            {/* 보증 만료일 (가전/가구 카테고리만 표시) */}
+            {showWarrantyField && (
+              <>
+                <Text style={styles.fieldLabel}>보증 만료일</Text>
+                <View style={styles.dateRow}>
+                  <Pressable
+                    onPress={() => setWarrantyDatePickerVisible(true)}
+                    style={styles.dateButton}>
+                    <Ionicons name="shield-checkmark-outline" size={18} color={colors.textSecondary} style={{marginRight: spacing.sm}} />
+                    <Text style={styles.dateText}>
+                      {warrantyDate ? formatDateKo(warrantyDate) : '날짜 선택'}
+                    </Text>
+                  </Pressable>
+                  {warrantyDate && (
+                    <Pressable onPress={() => setWarrantyDate(null)} style={styles.quickDateBtn}>
+                      <Text style={styles.quickDateText}>초기화</Text>
+                    </Pressable>
+                  )}
+                </View>
+                <DateTimePickerModal
+                  isVisible={isWarrantyDatePickerVisible}
+                  mode="date"
+                  onConfirm={d => {
+                    setWarrantyDate(d);
+                    setWarrantyDatePickerVisible(false);
+                  }}
+                  onCancel={() => setWarrantyDatePickerVisible(false)}
+                />
+              </>
+            )}
 
             <Input
               label="링크"
@@ -444,6 +542,49 @@ const styles = StyleSheet.create({
     ...typography.captionBold,
     color: colors.primary,
     marginLeft: spacing.xs,
+  },
+  aiBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  aiBannerText: {
+    ...typography.caption,
+    color: colors.primaryDark,
+    flex: 1,
+  },
+  aiBannerActions: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  aiBannerBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+  },
+  aiBannerBtnText: {
+    ...typography.small,
+    color: colors.textInverse,
+    fontWeight: '600',
+  },
+  aiBannerBtnOutline: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+  },
+  aiBannerBtnOutlineText: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: '600',
   },
 });
 

@@ -11,7 +11,8 @@ import {
   ToastAndroid,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import {supabase} from '../../lib/supabase';
+import {supabase, suggestProductInfo} from '../../lib/supabase';
+import {useCategories} from '../../hooks/useCategories';
 import {colors} from '../../constants/colors';
 import {typography} from '../../constants/typography';
 import {spacing, radius} from '../../constants/spacing';
@@ -19,9 +20,18 @@ import {formatDateISO} from '../../utils/formatDate';
 
 const {height: SCREEN_HEIGHT} = Dimensions.get('window');
 
+const CATEGORY_NAME_MAP = {
+  '전자기기': '가전',
+  '생활용품': '잡화',
+  '뷰티': '잡화',
+  '식품': '잡화',
+  '도서': '잡화',
+};
+
 function ShareModalScreen({sharedData, onClose}) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [categoryId, setCategoryId] = useState(null);
   const [productInfo, setProductInfo] = useState({
     name: '',
     price: 0,
@@ -29,6 +39,7 @@ function ShareModalScreen({sharedData, onClose}) {
     link: '',
     store_name: '',
   });
+  const {categories} = useCategories();
 
   const slideAnim = useState(new Animated.Value(SCREEN_HEIGHT))[0];
 
@@ -373,8 +384,10 @@ function ShareModalScreen({sharedData, onClose}) {
         !/redirect|리다이렉트|loading|just a moment|checking/i.test(og.title) &&
         og.title.length > 1;
 
+      const finalName = isOgTitleValid ? og.title : textName || '공유된 상품';
+
       setProductInfo({
-        name: isOgTitleValid ? og.title : textName || '공유된 상품',
+        name: finalName,
         price: og.price || textPrice,
         image_url: og.image || '',
         link: url,
@@ -382,6 +395,16 @@ function ShareModalScreen({sharedData, onClose}) {
       });
 
       setLoading(false);
+
+      // LLM으로 카테고리 제안
+      try {
+        const suggestion = await suggestProductInfo(finalName);
+        if (suggestion?.category) {
+          const catName = CATEGORY_NAME_MAP[suggestion.category] || suggestion.category;
+          const cat = categories.find(c => c.name === catName);
+          if (cat) setCategoryId(cat.id);
+        }
+      } catch {}
     } catch (e) {
       console.error(e);
       setLoading(false);
@@ -409,6 +432,7 @@ function ShareModalScreen({sharedData, onClose}) {
         link: productInfo.link || null,
         is_wishlist: true,
         user_id: user.email,
+        category_id: categoryId,
       });
 
       if (error) throw error;

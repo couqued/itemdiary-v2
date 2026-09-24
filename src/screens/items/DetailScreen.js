@@ -29,6 +29,16 @@ function DetailScreen({navigation, route}) {
     return null;
   }
   const {getCategoryById} = useCategories();
+
+  const warrantyDaysLeft = item.warranty_date
+    ? Math.ceil((new Date(item.warranty_date) - new Date()) / (1000 * 60 * 60 * 24))
+    : null;
+  const warrantyLabel = (() => {
+    if (warrantyDaysLeft === null) return null;
+    if (warrantyDaysLeft < 0) return {text: '보증 만료', color: '#9CA3AF'};
+    if (warrantyDaysLeft <= 30) return {text: `보증 만료 임박 (D-${warrantyDaysLeft})`, color: '#EF4444'};
+    return {text: `보증 중 (${warrantyDaysLeft}일 남음)`, color: '#10B981'};
+  })();
   const category = getCategoryById(item.category_id);
   const [loading, setLoading] = useState(false);
   const [deleteVisible, setDeleteVisible] = useState(false);
@@ -154,6 +164,14 @@ function DetailScreen({navigation, route}) {
           )}
           {!!item.memo && (
             <InfoRow icon="document-text-outline" label="메모" value={item.memo} />
+          )}
+          {!!warrantyLabel && (
+            <InfoRow
+              icon="shield-checkmark-outline"
+              label="보증기간"
+              value={warrantyLabel.text}
+              valueStyle={{color: warrantyLabel.color, fontWeight: '600'}}
+            />
           )}
         </View>
       </ScrollView>

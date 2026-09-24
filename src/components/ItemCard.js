@@ -9,6 +9,12 @@ import {formatPrice} from '../utils/formatPrice';
 import {formatDateShort} from '../utils/formatDate';
 
 export function ItemCard({item, category, onPress, isGrid = true}) {
+  const warrantyDaysLeft = item.warranty_date
+    ? Math.ceil((new Date(item.warranty_date) - new Date()) / (1000 * 60 * 60 * 24))
+    : null;
+  const isWarrantyExpiringSoon =
+    warrantyDaysLeft !== null && warrantyDaysLeft >= 0 && warrantyDaysLeft <= 30;
+
   const renderPlaceholder = (style) => (
     <View style={[style, styles.placeholder]}>
       <Icon name="image-outline" size={isGrid ? 32 : 24} color={colors.textTertiary} />
@@ -48,6 +54,9 @@ export function ItemCard({item, category, onPress, isGrid = true}) {
               style={styles.gridBadge}
             />
           )}
+          {isWarrantyExpiringSoon && (
+            <Text style={styles.warrantyBadge}>보증 임박 D-{warrantyDaysLeft}</Text>
+          )}
         </View>
       </Pressable>
     );
@@ -83,6 +92,9 @@ export function ItemCard({item, category, onPress, isGrid = true}) {
         <Text style={styles.listPrice}>
           {formatPrice(item.price)}원
         </Text>
+        {isWarrantyExpiringSoon && (
+          <Text style={styles.warrantyBadge}>보증 임박 D-{warrantyDaysLeft}</Text>
+        )}
       </View>
     </Pressable>
   );
@@ -177,5 +189,11 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.9,
     transform: [{scale: 0.98}],
+  },
+  warrantyBadge: {
+    ...typography.small,
+    color: '#EF4444',
+    fontWeight: '600',
+    marginTop: 2,
   },
 });

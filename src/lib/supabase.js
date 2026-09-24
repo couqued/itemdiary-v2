@@ -13,3 +13,10 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     detectSessionInUrl: false,
   },
 });
+
+export const suggestProductInfo = async (productName) => {
+  const { data, error } = await supabase.functions.invoke('suggest-product-info', {
+    body: { name: productName },
+  });
+  return error ? null : data;
+};
