@@ -87,7 +87,7 @@ function SignUpScreenEmail ({navigation, route}) {
      behavior={Platform.select({ios: 'padding'})}
    >
      <SafeAreaView style={styles.fullScreen}>
-       <Text style={styles.text}>아이템 다이어리</Text>
+       <Text style={styles.text}>아이템북</Text>
        <View style={styles.form}>
          <SignUpForm
            isSignUp={isSignUp}

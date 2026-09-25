@@ -53,3 +53,9 @@ android/app/.cxx/
 
 # 패치 파일
 patches/
+
+# 예전 업로드 키 백업 (커밋 금지)
+android/app/upload.keystore.bak
+*.keystore.bak
+*.keystore.old
+*.keystore.lost

@@ -10,6 +10,7 @@ import {
   Dimensions,
   Modal,
   Alert,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/dist/Ionicons';
@@ -19,7 +20,9 @@ import {spacing, radius} from '../../constants/spacing';
 import {Badge, LoadingOverlay, CustomAlert} from '../../components/ui';
 import {useCategories} from '../../hooks/useCategories';
 import {formatPrice} from '../../utils/formatPrice';
-import {formatDateKo} from '../../utils/formatDate';
+import {formatDateKo, formatDateISO} from '../../utils/formatDate';
+import {addMonths, getScheduleRows} from '../../utils/schedule';
+import {syncItemReminders, setItemMuted} from '../../lib/reminders';
 import {supabase} from '../../lib/supabase';
 
 function DetailScreen({navigation, route}) {
@@ -30,15 +33,24 @@ function DetailScreen({navigation, route}) {
   }
   const {getCategoryById} = useCategories();
 
-  const warrantyDaysLeft = item.warranty_date
-    ? Math.ceil((new Date(item.warranty_date) - new Date()) / (1000 * 60 * 60 * 24))
-    : null;
-  const warrantyLabel = (() => {
-    if (warrantyDaysLeft === null) return null;
-    if (warrantyDaysLeft < 0) return {text: '보증 만료', color: '#9CA3AF'};
-    if (warrantyDaysLeft <= 30) return {text: `보증 만료 임박 (D-${warrantyDaysLeft})`, color: '#EF4444'};
-    return {text: `보증 중 (${warrantyDaysLeft}일 남음)`, color: '#10B981'};
-  })();
+  // 물건별 알림 끄기 (notify_muted 컬럼이 있는 DB에서만 표시)
+  const canMute = 'notify_muted' in item;
+  const [muted, setMuted] = useState(!!item.notify_muted);
+  const onToggleNotify = async value => {
+    setMuted(!value);
+    const ok = await setItemMuted(item.seq, !value);
+    if (!ok) {
+      setMuted(value);
+      Alert.alert('', '알림 설정을 바꾸지 못했어요.');
+    }
+  };
+
+  // 교체 완료 처리 후 화면에 바로 반영하기 위한 로컬 값
+  const [nextReplacementOverride, setNextReplacementOverride] = useState(null);
+  const scheduleRows = getScheduleRows({
+    ...item,
+    next_replacement_date: nextReplacementOverride || item.next_replacement_date,
+  });
   const category = getCategoryById(item.category_id);
   const [loading, setLoading] = useState(false);
   const [deleteVisible, setDeleteVisible] = useState(false);
@@ -58,7 +70,26 @@ function DetailScreen({navigation, route}) {
       Alert.alert('', '처리에 실패하였습니다.');
       return;
     }
+    syncItemReminders();
     navigation.goBack();
+  };
+
+  // 오늘 교체했다고 기록 → 다음 교체일을 오늘 + 주기로 갱신
+  const onReplaced = async () => {
+    if (!item.replacement_months) return;
+    const next = formatDateISO(addMonths(new Date(), item.replacement_months));
+    setLoading(true);
+    const {error} = await supabase
+      .from('items')
+      .update({next_replacement_date: next, updated_at: new Date().toISOString()})
+      .eq('seq', item.seq);
+    setLoading(false);
+    if (error) {
+      Alert.alert('', '처리에 실패하였습니다.');
+      return;
+    }
+    setNextReplacementOverride(next);
+    syncItemReminders();
   };
 
   const onDeleteConfirm = async () => {
@@ -74,6 +105,7 @@ function DetailScreen({navigation, route}) {
       Alert.alert('', '삭제에 실패하였습니다.');
       return;
     }
+    syncItemReminders();
     navigation.goBack();
   };
 
@@ -165,13 +197,33 @@ function DetailScreen({navigation, route}) {
           {!!item.memo && (
             <InfoRow icon="document-text-outline" label="메모" value={item.memo} />
           )}
-          {!!warrantyLabel && (
-            <InfoRow
-              icon="shield-checkmark-outline"
-              label="보증기간"
-              value={warrantyLabel.text}
-              valueStyle={{color: warrantyLabel.color, fontWeight: '600'}}
-            />
+          {scheduleRows.map(row => (
+            <View key={row.key}>
+              <InfoRow
+                icon={row.icon}
+                label={row.label}
+                value={row.text}
+                valueStyle={{color: row.color, fontWeight: '600'}}
+              />
+              {row.key === 'replacement' && !!item.replacement_months && (
+                <Pressable
+                  onPress={onReplaced}
+                  style={({pressed}) => [styles.replacedBtn, pressed && {opacity: 0.7}]}>
+                  <Ionicons name="checkmark-circle-outline" size={16} color={colors.primary} />
+                  <Text style={styles.replacedBtnText}>오늘 교체 완료</Text>
+                </Pressable>
+              )}
+            </View>
+          ))}
+          {canMute && (
+            <View style={styles.notifyRow}>
+              <Ionicons name="notifications-outline" size={20} color={colors.textSecondary} />
+              <View style={{flex: 1, marginLeft: spacing.sm}}>
+                <Text style={styles.notifyLabel}>이 물건 알림 받기</Text>
+                <Text style={styles.notifyHint}>끄면 이 물건의 보증·교체·찜·기념일 알림이 오지 않아요</Text>
+              </View>
+              <Switch value={!muted} onValueChange={onToggleNotify} trackColor={{true: colors.primary}} />
+            </View>
           )}
         </View>
       </ScrollView>
@@ -243,6 +295,39 @@ function InfoRow({icon, label, value, valueStyle}) {
 }
 
 const styles = StyleSheet.create({
+  notifyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+    marginTop: spacing.sm,
+  },
+  notifyLabel: {
+    ...typography.body,
+    color: colors.text,
+  },
+  notifyHint: {
+    ...typography.small,
+    color: colors.textTertiary,
+    marginTop: 2,
+  },
+  replacedBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.primaryLight,
+    marginBottom: spacing.sm,
+  },
+  replacedBtnText: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.surface,

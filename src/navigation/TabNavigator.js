@@ -39,7 +39,7 @@ function TabNavigator() {
       <Tab.Screen
         name="홈"
         component={ListScreen}
-        options={{title: '아이템 다이어리', headerShown: true, headerTitleStyle: typography.h3}}
+        options={{title: '아이템북', headerShown: true, headerTitleStyle: typography.h3}}
       />
       <Tab.Screen
         name="캘린더"

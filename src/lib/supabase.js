@@ -20,3 +20,15 @@ export const suggestProductInfo = async (productName) => {
   });
   return error ? null : data;
 };
+
+// 사진(base64)을 보고 물건 이름을 추정 → { name }
+export const identifyItem = async (base64, mimeType) => {
+  try {
+    const { data, error } = await supabase.functions.invoke('identify-item', {
+      body: { image: base64, mimeType: mimeType || 'image/jpeg' },
+    });
+    return error ? null : data;
+  } catch (e) {
+    return null;
+  }
+};

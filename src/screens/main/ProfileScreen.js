@@ -7,6 +7,7 @@ import {
   Pressable,
   Platform,
   ScrollView,
+  Switch,
 } from 'react-native';
 import {useIsFocused} from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -17,8 +18,25 @@ import {spacing, radius} from '../../constants/spacing';
 import {formatPrice} from '../../utils/formatPrice';
 import {supabase} from '../../lib/supabase';
 import {CustomAlert} from '../../components/ui';
+import {isRemindersEnabled, setRemindersEnabled, isNewsEnabled, setNewsEnabled} from '../../lib/reminders';
+import {SHOW_NOTIFICATION_TEST} from '../../dev/flags';
+import {NotificationTestPanel} from '../../dev/NotificationTestPanel';
 
 function ProfileScreen({navigation}) {
+  const [remindersOn, setRemindersOn] = useState(true);
+  const [newsOn, setNewsOn] = useState(true);
+  useEffect(() => {
+    isRemindersEnabled().then(setRemindersOn);
+    isNewsEnabled().then(setNewsOn);
+  }, []);
+  const onToggleReminders = async value => {
+    setRemindersOn(value);
+    await setRemindersEnabled(value);
+  };
+  const onToggleNews = async value => {
+    setNewsOn(value);
+    await setNewsEnabled(value);
+  };
   const isFocused = useIsFocused();
   const [appVersion, setAppVersion] = useState('');
   const [latestVersion, setLatestVersion] = useState('');
@@ -100,6 +118,38 @@ function ProfileScreen({navigation}) {
 
         {/* 메뉴 */}
         <View style={styles.menuSection}>
+          <View style={styles.menuItem}>
+            <View style={[styles.menuLeft, {flex: 1}]}>
+              <Icon name="notifications-outline" size={22} color={colors.textSecondary} style={{marginRight: spacing.md}} />
+              <View style={{flex: 1}}>
+                <Text style={styles.menuLabel}>일정 알림</Text>
+                <Text style={styles.menuHint}>
+                  보증 만료·소모품 교체·배터리 점검일에 오전 9시 알림. 알림이 오지 않으면 휴대폰 설정에서 이 앱의 배터리 최적화를 꺼주세요.
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={remindersOn}
+              onValueChange={onToggleReminders}
+              trackColor={{true: colors.primary}}
+            />
+          </View>
+          <View style={styles.menuItem}>
+            <View style={[styles.menuLeft, {flex: 1}]}>
+              <Icon name="sparkles-outline" size={22} color={colors.textSecondary} style={{marginRight: spacing.md}} />
+              <View style={{flex: 1}}>
+                <Text style={styles.menuLabel}>소식 알림</Text>
+                <Text style={styles.menuHint}>
+                  찜 목록 알림, 함께한 지 N년, 월간 요약 등
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={newsOn}
+              onValueChange={onToggleNews}
+              trackColor={{true: colors.primary}}
+            />
+          </View>
           <MenuItem icon="log-out-outline" label="로그아웃" onPress={() => setLogoutVisible(true)} />
           <MenuItem
             icon="person-remove-outline"
@@ -118,6 +168,8 @@ function ProfileScreen({navigation}) {
             </Text>
           </View>
         </View>
+
+        {SHOW_NOTIFICATION_TEST && <NotificationTestPanel />}
       </ScrollView>
 
       <CustomAlert
@@ -234,6 +286,12 @@ const styles = StyleSheet.create({
   menuLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  menuHint: {
+    ...typography.small,
+    color: colors.textTertiary,
+    marginTop: 2,
+    marginRight: spacing.sm,
   },
   menuLabel: {
     ...typography.body,

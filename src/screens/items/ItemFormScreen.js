@@ -8,6 +8,7 @@ import {
   ScrollView,
   Platform,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
@@ -18,13 +19,19 @@ import {typography} from '../../constants/typography';
 import {spacing, radius} from '../../constants/spacing';
 import {Input, CustomAlert, LoadingOverlay} from '../../components/ui';
 import {CategoryChips} from '../../components/CategoryChips';
+import {ScheduleDateField} from '../../components/ScheduleDateField';
 import {useImagePicker} from '../../hooks/useImagePicker';
 import {useCategories} from '../../hooks/useCategories';
 import {formatPrice, parsePrice} from '../../utils/formatPrice';
 import {formatDateKo, formatDateISO} from '../../utils/formatDate';
-import {supabase, suggestProductInfo} from '../../lib/supabase';
+import {supabase, suggestProductInfo, identifyItem} from '../../lib/supabase';
+import {addMonths, nextReplacementFrom, formatMonths} from '../../utils/schedule';
+import {onItemSaved} from '../../lib/reminders';
 
 const WARRANTY_CATEGORIES = ['가전', '가구', '전자기기'];
+// 배터리 점검은 전자기기 성격의 카테고리에서만 제안
+const ELECTRONICS_CATEGORIES = ['가전', '전자기기'];
+const REPLACEMENT_MONTH_OPTIONS = [1, 2, 3, 6, 12, 24];
 const CATEGORY_NAME_MAP = {
   '전자기기': '가전',
   '생활용품': '잡화',
@@ -32,19 +39,11 @@ const CATEGORY_NAME_MAP = {
   '식품': '잡화',
   '도서': '잡화',
 };
-const AI_DEBOUNCE_MS = 1200;
+const AI_DEBOUNCE_MS = 600;
 const AI_MIN_LENGTH = 2;
 
-// 1/31 + 1개월이 3/3이 되지 않도록 말일로 맞춘다
-const addMonths = (base, months) => {
-  const d = new Date(base);
-  const day = d.getDate();
-  d.setDate(1);
-  d.setMonth(d.getMonth() + months);
-  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-  d.setDate(Math.min(day, lastDay));
-  return d;
-};
+const toDate = v => (v ? new Date(v) : null);
+const toISO = d => (d ? formatDateISO(d) : null);
 
 function ItemFormScreen({navigation, route}) {
   const existingItem = route.params?.item;
@@ -52,8 +51,8 @@ function ItemFormScreen({navigation, route}) {
   const initialIsWishlist = route.params?.is_wishlist || false;
   const isEdit = !!existingItem;
 
-  const {pickImage, uploadImage, previewUri, setExistingImageUrl} =
-    useImagePicker();
+  const {pickImage, takePhoto, uploadImage, previewUri, setExistingImageUrl} =
+    useImagePicker({onPicked: asset => handlePhotoPicked(asset)});
   const {categories} = useCategories();
 
   const [loading, setLoading] = useState(false);
@@ -71,7 +70,16 @@ function ItemFormScreen({navigation, route}) {
   const [warrantyDate, setWarrantyDate] = useState(null);
   // AI 제안으로 설정된 보증 개월 수. 값이 있으면 구입날짜 변경 시 만료일을 다시 계산한다
   const [warrantyMonths, setWarrantyMonths] = useState(null);
-  const [isWarrantyDatePickerVisible, setWarrantyDatePickerVisible] = useState(false);
+  const [batteryCheckDate, setBatteryCheckDate] = useState(null);
+  const [showBatteryCheck, setShowBatteryCheck] = useState(false);
+  const [replacementMonths, setReplacementMonths] = useState(null);
+  const [replacementItem, setReplacementItem] = useState('');
+  const [nextReplacementDate, setNextReplacementDate] = useState(null);
+  // 다음 교체일을 직접 고르면 주기·구입일 변경에 따른 자동 계산을 멈춘다
+  const [isNextReplacementManual, setIsNextReplacementManual] = useState(false);
+  const [showReplacement, setShowReplacement] = useState(false);
+  const [isPhotoAnalyzing, setIsPhotoAnalyzing] = useState(false);
+  const titleRef = useRef('');
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const lastQueriedRef = useRef('');
@@ -89,6 +97,7 @@ function ItemFormScreen({navigation, route}) {
 
   const selectedCategory = categories.find(c => c.id === categoryId);
   const showWarrantyField = selectedCategory && WARRANTY_CATEGORIES.includes(selectedCategory.name);
+  const isElectronics = selectedCategory && ELECTRONICS_CATEGORIES.includes(selectedCategory.name);
 
   useEffect(() => {
     if (existingItem) {
@@ -100,7 +109,14 @@ function ItemFormScreen({navigation, route}) {
       setMemo(existingItem.memo || '');
       setCategoryId(existingItem.category_id || null);
       setExistingImageUrl(existingItem.image_url || '');
-      setWarrantyDate(existingItem.warranty_date ? new Date(existingItem.warranty_date) : null);
+      setWarrantyDate(toDate(existingItem.warranty_date));
+      setBatteryCheckDate(toDate(existingItem.battery_check_date));
+      setShowBatteryCheck(!!existingItem.battery_check_date);
+      setReplacementMonths(existingItem.replacement_months || null);
+      setReplacementItem(existingItem.replacement_item || '');
+      setNextReplacementDate(toDate(existingItem.next_replacement_date));
+      setIsNextReplacementManual(!!existingItem.next_replacement_date);
+      setShowReplacement(!!(existingItem.replacement_months || existingItem.next_replacement_date));
       if (existingItem.link || existingItem.memo) {
         setShowExtra(true);
       }
@@ -118,6 +134,14 @@ function ItemFormScreen({navigation, route}) {
       }
     }
   }, [existingItem, prefilledData]);
+
+  // 알림의 "사진으로 기록" 버튼으로 들어온 경우 바로 카메라를 연다 (사진 인식으로 제목 자동 입력)
+  useEffect(() => {
+    if (route.params?.autoPhoto && !isEdit) {
+      const timer = setTimeout(takePhoto, 400);
+      return () => clearTimeout(timer);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const showAlert = (config) => {
     setAlertConfig({...config, visible: true});
@@ -148,7 +172,9 @@ function ItemFormScreen({navigation, route}) {
     }
     if (seq !== aiRequestSeqRef.current) return;
     setIsAiLoading(false);
-    setAiSuggestion(result && (result.category || result.warranty_months > 0) ? result : null);
+    setAiSuggestion(
+      result && (result.category || result.warranty_months > 0 || result.replacement_months > 0) ? result : null,
+    );
   }, [isEdit]);
 
   // 입력을 멈추면 자동으로 제안 요청 (포커스 해제 시에는 즉시)
@@ -167,13 +193,37 @@ function ItemFormScreen({navigation, route}) {
 
   const handleTitleBlur = () => requestAiSuggestion(title);
 
+  useEffect(() => {
+    titleRef.current = title;
+  }, [title]);
+
+  // 사진을 고르면 제목이 비어 있을 때만 AI가 물건 이름을 채운다 (이후 제목 기반 제안으로 이어짐)
+  const handlePhotoPicked = async asset => {
+    if (isEdit || titleRef.current.trim() || !asset?.base64) return;
+    setIsPhotoAnalyzing(true);
+    const result = await identifyItem(asset.base64, asset.type);
+    setIsPhotoAnalyzing(false);
+    const name = result?.name?.trim();
+    if (name && !titleRef.current.trim()) {
+      setTitle(name.slice(0, 20));
+    }
+  };
+
   const applyAiSuggestion = () => {
     if (!aiSuggestion) return;
+    Keyboard.dismiss();
     const catName = CATEGORY_NAME_MAP[aiSuggestion.category] || aiSuggestion.category;
     const cat = categories.find(c => c.name === catName);
     if (cat) setCategoryId(cat.id);
     if (aiSuggestion.warranty_months > 0) {
       setWarrantyMonths(aiSuggestion.warranty_months);
+    }
+    if (aiSuggestion.replacement_months > 0) {
+      setReplacementMonths(aiSuggestion.replacement_months);
+      // AI가 필터류 소모품이라고 알려주면 비어 있는 소모품 이름을 '필터'로 채운다
+      if (aiSuggestion.has_filter) setReplacementItem(prev => prev || '필터');
+      setIsNextReplacementManual(false);
+      setShowReplacement(true);
     }
     setAiSuggestion(null);
   };
@@ -181,6 +231,29 @@ function ItemFormScreen({navigation, route}) {
   useEffect(() => {
     if (warrantyMonths) setWarrantyDate(addMonths(date, warrantyMonths));
   }, [date, warrantyMonths]);
+
+  useEffect(() => {
+    if (!isNextReplacementManual) setNextReplacementDate(nextReplacementFrom(date, replacementMonths));
+  }, [date, replacementMonths, isNextReplacementManual]);
+
+  const selectReplacementMonths = months => {
+    setReplacementMonths(months);
+    setIsNextReplacementManual(false);
+  };
+
+  const removeReplacement = () => {
+    setShowReplacement(false);
+    setReplacementMonths(null);
+    setReplacementItem('');
+    setNextReplacementDate(null);
+    setIsNextReplacementManual(false);
+  };
+
+  // 기준일로부터 n년 뒤 날짜를 채우는 빠른 선택 버튼
+  const yearsAfter = (base, years, label) => ({
+    label,
+    getDate: () => addMonths(base, years * 12),
+  });
 
   // 사용자가 만료일을 직접 지정/초기화하면 자동 계산을 멈춘다
   const setWarrantyDateManually = d => {
@@ -237,8 +310,19 @@ function ItemFormScreen({navigation, route}) {
         category_id: categoryId,
         image_url: imageUrl,
         is_wishlist: isWishlist,
-        warranty_date: warrantyDate ? formatDateISO(warrantyDate) : null,
+        warranty_date: toISO(warrantyDate),
+        replacement_months: replacementMonths,
+        next_replacement_date: toISO(nextReplacementDate),
       };
+      // 배터리 점검·소모품 이름 컬럼은 DB 마이그레이션 이후에 생기므로,
+      // 값이 있거나 기존 데이터에 컬럼이 있을 때만 보낸다 (마이그레이션 전에도 저장이 깨지지 않도록)
+      const optionalColumns = {
+        battery_check_date: toISO(batteryCheckDate),
+        replacement_item: replacementItem.trim() || null,
+      };
+      Object.entries(optionalColumns).forEach(([key, value]) => {
+        if (value !== null || (isEdit && key in existingItem)) itemData[key] = value;
+      });
 
       if (isEdit) {
         const {error} = await supabase
@@ -247,13 +331,19 @@ function ItemFormScreen({navigation, route}) {
           .eq('seq', existingItem.seq);
 
         if (error) throw error;
+        await onItemSaved({...itemData, seq: existingItem.seq});
       } else {
-        const {error} = await supabase.from('items').insert({
-          ...itemData,
-          user_id: user.email,
-        });
+        const {data: inserted, error} = await supabase
+          .from('items')
+          .insert({
+            ...itemData,
+            user_id: user.email,
+          })
+          .select('seq')
+          .single();
 
         if (error) throw error;
+        await onItemSaved({...itemData, seq: inserted.seq});
       }
 
       navigation.goBack();
@@ -315,6 +405,12 @@ function ItemFormScreen({navigation, route}) {
           />
 
           {/* AI 로딩 / 제안 배너 */}
+          {isPhotoAnalyzing && (
+            <View style={styles.aiBanner}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.aiBannerText}>사진에서 물건을 알아보는 중...</Text>
+            </View>
+          )}
           {isAiLoading && (
             <View style={styles.aiBanner}>
               <ActivityIndicator size="small" color={colors.primary} />
@@ -325,13 +421,19 @@ function ItemFormScreen({navigation, route}) {
             <View style={styles.aiBanner}>
               <Text style={styles.aiBannerText}>
                 AI 제안: {aiSuggestion.category}
-                {aiSuggestion.warranty_months > 0 ? ` · 보증 ${aiSuggestion.warranty_months}개월` : ''}
+                {aiSuggestion.warranty_months > 0 ? ` · 보증 ${formatMonths(aiSuggestion.warranty_months)}` : ''}
+                {aiSuggestion.replacement_months > 0 ? ` · 교체 ${formatMonths(aiSuggestion.replacement_months)}마다` : ''}
               </Text>
               <View style={styles.aiBannerActions}>
                 <Pressable onPress={applyAiSuggestion} style={styles.aiBannerBtn}>
                   <Text style={styles.aiBannerBtnText}>적용</Text>
                 </Pressable>
-                <Pressable onPress={() => setAiSuggestion(null)} style={styles.aiBannerBtnOutline}>
+                <Pressable
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setAiSuggestion(null);
+                  }}
+                  style={styles.aiBannerBtnOutline}>
                   <Text style={styles.aiBannerBtnOutlineText}>무시</Text>
                 </Pressable>
               </View>
@@ -380,32 +482,101 @@ function ItemFormScreen({navigation, route}) {
           {/* 보증 만료일 (가전/가구 카테고리만 표시) */}
           {showWarrantyField && (
             <>
-              <Text style={styles.fieldLabel}>보증 만료일</Text>
-              <View style={styles.dateRow}>
-                <Pressable
-                  onPress={() => setWarrantyDatePickerVisible(true)}
-                  style={styles.dateButton}>
-                  <Ionicons name="shield-checkmark-outline" size={18} color={colors.textSecondary} style={{marginRight: spacing.sm}} />
-                  <Text style={styles.dateText}>
-                    {warrantyDate ? formatDateKo(warrantyDate) : '날짜 선택'}
-                  </Text>
+              <ScheduleDateField
+                label="보증 만료일"
+                icon="shield-checkmark-outline"
+                value={warrantyDate}
+                onChange={setWarrantyDateManually}
+                quickOptions={[
+                  yearsAfter(date, 1, '구입 후 1년'),
+                  yearsAfter(date, 2, '2년'),
+                  yearsAfter(date, 3, '3년'),
+                ]}
+              />
+              <Text style={styles.hint}>연장 보증(케어 서비스 등)에 가입했다면 늘어난 만료일로 입력하세요.</Text>
+            </>
+          )}
+
+          {/* 관리 일정: 배터리 점검 / 소모품 교체 */}
+          {showBatteryCheck && (
+            <ScheduleDateField
+              label="배터리 점검일"
+              icon="battery-half-outline"
+              value={batteryCheckDate}
+              onChange={setBatteryCheckDate}
+              quickOptions={[
+                yearsAfter(date, 1, '구입 후 1년'),
+                yearsAfter(date, 2, '2년'),
+                yearsAfter(date, 3, '3년'),
+              ]}
+              onRemove={() => {
+                setShowBatteryCheck(false);
+                setBatteryCheckDate(null);
+              }}
+            />
+          )}
+
+          {showReplacement && (
+            <>
+              <View style={styles.labelRow}>
+                <Text style={styles.sectionLabel}>소모품 교체</Text>
+                <Pressable onPress={removeReplacement} hitSlop={8}>
+                  <Ionicons name="close" size={18} color={colors.textTertiary} />
                 </Pressable>
-                {warrantyDate && (
-                  <Pressable onPress={() => setWarrantyDateManually(null)} style={styles.quickDateBtn}>
-                    <Text style={styles.quickDateText}>초기화</Text>
-                  </Pressable>
-                )}
               </View>
-              <DateTimePickerModal
-                isVisible={isWarrantyDatePickerVisible}
-                mode="date"
-                onConfirm={d => {
-                  setWarrantyDateManually(d);
-                  setWarrantyDatePickerVisible(false);
+              <Input
+                label="소모품 이름"
+                value={replacementItem}
+                onChangeText={setReplacementItem}
+                placeholder="예: 정수기 필터, 칫솔모, 건전지"
+                maxLength={20}
+              />
+              <Text style={styles.fieldLabel}>교체 주기</Text>
+              <View style={styles.monthChips}>
+                {[...new Set([...REPLACEMENT_MONTH_OPTIONS, replacementMonths].filter(Boolean))]
+                  .sort((a, b) => a - b)
+                  .map(m => {
+                    const selected = m === replacementMonths;
+                    return (
+                      <Pressable
+                        key={m}
+                        onPress={() => selectReplacementMonths(m)}
+                        style={[styles.monthChip, selected && styles.monthChipActive]}>
+                        <Text style={[styles.monthChipText, selected && styles.monthChipTextActive]}>
+                          {formatMonths(m)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+              </View>
+              <ScheduleDateField
+                label="다음 교체일"
+                icon="refresh-outline"
+                value={nextReplacementDate}
+                onChange={d => {
+                  setIsNextReplacementManual(!!d);
+                  setNextReplacementDate(d);
                 }}
-                onCancel={() => setWarrantyDatePickerVisible(false)}
               />
             </>
+          )}
+
+          {/* 아직 추가하지 않은 관리 항목 */}
+          {(!showReplacement || (isElectronics && !showBatteryCheck)) && (
+            <View style={styles.addScheduleRow}>
+              {isElectronics && !showBatteryCheck && (
+                <Pressable onPress={() => setShowBatteryCheck(true)} style={styles.addScheduleBtn}>
+                  <Ionicons name="add" size={14} color={colors.textSecondary} />
+                  <Text style={styles.addScheduleText}>배터리 점검</Text>
+                </Pressable>
+              )}
+              {!showReplacement && (
+                <Pressable onPress={() => setShowReplacement(true)} style={styles.addScheduleBtn}>
+                  <Ionicons name="add" size={14} color={colors.textSecondary} />
+                  <Text style={styles.addScheduleText}>소모품 교체</Text>
+                </Pressable>
+              )}
+            </View>
           )}
 
           <Input
@@ -590,6 +761,67 @@ const styles = StyleSheet.create({
     ...typography.captionBold,
     color: colors.primary,
     marginLeft: spacing.xs,
+  },
+  hint: {
+    ...typography.small,
+    color: colors.textTertiary,
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
+  },
+  sectionLabel: {
+    ...typography.bodyBold,
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  monthChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  monthChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceSecondary,
+  },
+  monthChipActive: {
+    backgroundColor: colors.primary,
+  },
+  monthChipText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  monthChipTextActive: {
+    color: colors.textInverse,
+  },
+  addScheduleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  addScheduleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+  },
+  addScheduleText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    marginLeft: 2,
   },
   aiBanner: {
     flexDirection: 'row',

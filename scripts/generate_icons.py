@@ -1,6 +1,6 @@
 """앱 아이콘 / 스플래시 이미지 생성 스크립트.
 
-원본: docs/brand/background.svg (배경), docs/brand/logo.svg (유리 보관함 + 보석 로고)
+원본: docs/brand/background.svg (배경), docs/brand/logo.svg (보석 i 로고)
 SVG를 Chrome(headless)으로 렌더링한 뒤 Pillow로 크기별 PNG를 만든다.
 실행: python3 scripts/generate_icons.py  (Pillow, Google Chrome 필요)
 """
@@ -81,6 +81,22 @@ def main():
     folder = os.path.join(RES, 'drawable-xxhdpi')
     os.makedirs(folder, exist_ok=True)
     logo.resize((480, 480), Image.LANCZOS).save(os.path.join(folder, 'splash_icon.png'))
+
+    # 알림 작은 아이콘 (24dp): 안드로이드는 알파 채널만 쓰므로 로고 모양을 흰색 실루엣으로
+    alpha = logo.getchannel('A')
+    box = alpha.getbbox()
+    side = max(box[2] - box[0], box[3] - box[1])
+    pad = int(side * 0.12)
+    cx, cy = (box[0] + box[2]) // 2, (box[1] + box[3]) // 2
+    half = side // 2 + pad
+    alpha = alpha.crop((cx - half, cy - half, cx + half, cy + half))
+    silhouette = Image.new('RGBA', alpha.size, (255, 255, 255, 0))
+    silhouette.putalpha(alpha)
+    notif = {'mdpi': 24, 'hdpi': 36, 'xhdpi': 48, 'xxhdpi': 72, 'xxxhdpi': 96}
+    for d, px in notif.items():
+        folder = os.path.join(RES, f'drawable-{d}')
+        os.makedirs(folder, exist_ok=True)
+        silhouette.resize((px, px), Image.LANCZOS).save(os.path.join(folder, 'ic_notification.png'))
     print('done')
 
 

@@ -3,7 +3,8 @@ import {launchImageLibrary, launchCamera} from 'react-native-image-picker';
 import Config from 'react-native-config';
 import {supabase} from '../lib/supabase';
 
-export function useImagePicker() {
+// onPicked: 사진을 고른 직후 asset(base64 포함)을 받는 콜백 (AI 사진 인식용)
+export function useImagePicker({onPicked} = {}) {
   const [imageResponse, setImageResponse] = useState(null);
   const [existingImageUrl, setExistingImageUrl] = useState('');
 
@@ -16,6 +17,7 @@ export function useImagePicker() {
     if (!res.assets || res.assets.length === 0) return;
     setImageResponse(res);
     setExistingImageUrl('');
+    onPicked?.(res.assets[0]);
   };
 
   const pickImage = () => {
@@ -24,7 +26,7 @@ export function useImagePicker() {
         mediaType: 'photo',
         maxWidth: 800,
         maxHeight: 800,
-        includeBase64: false,
+        includeBase64: true,
       },
       handleImageResponse,
     );
@@ -36,7 +38,7 @@ export function useImagePicker() {
         mediaType: 'photo',
         maxWidth: 800,
         maxHeight: 800,
-        includeBase64: false,
+        includeBase64: true,
       },
       handleImageResponse,
     );

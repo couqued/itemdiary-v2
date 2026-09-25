@@ -7,13 +7,10 @@ import {spacing, radius} from '../constants/spacing';
 import {Badge} from './ui/Badge';
 import {formatPrice} from '../utils/formatPrice';
 import {formatDateShort} from '../utils/formatDate';
+import {getScheduleBadge} from '../utils/schedule';
 
 export function ItemCard({item, category, onPress, isGrid = true}) {
-  const warrantyDaysLeft = item.warranty_date
-    ? Math.ceil((new Date(item.warranty_date) - new Date()) / (1000 * 60 * 60 * 24))
-    : null;
-  const isWarrantyExpiringSoon =
-    warrantyDaysLeft !== null && warrantyDaysLeft >= 0 && warrantyDaysLeft <= 30;
+  const scheduleBadge = getScheduleBadge(item);
 
   const renderPlaceholder = (style) => (
     <View style={[style, styles.placeholder]}>
@@ -54,8 +51,8 @@ export function ItemCard({item, category, onPress, isGrid = true}) {
               style={styles.gridBadge}
             />
           )}
-          {isWarrantyExpiringSoon && (
-            <Text style={styles.warrantyBadge}>보증 임박 D-{warrantyDaysLeft}</Text>
+          {!!scheduleBadge && (
+            <Text style={styles.warrantyBadge}>{scheduleBadge}</Text>
           )}
         </View>
       </Pressable>
@@ -92,8 +89,8 @@ export function ItemCard({item, category, onPress, isGrid = true}) {
         <Text style={styles.listPrice}>
           {formatPrice(item.price)}원
         </Text>
-        {isWarrantyExpiringSoon && (
-          <Text style={styles.warrantyBadge}>보증 임박 D-{warrantyDaysLeft}</Text>
+        {!!scheduleBadge && (
+          <Text style={styles.warrantyBadge}>{scheduleBadge}</Text>
         )}
       </View>
     </Pressable>

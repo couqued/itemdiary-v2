@@ -124,7 +124,7 @@
          enableOnAndroid={true}
        >
          <View style={styles.header}>
-           <Text style={styles.title}>아이템 다이어리</Text>
+           <Text style={styles.title}>아이템북</Text>
            <Text style={styles.subtitle}>
              {isSignUp ? '계정을 생성하고 나만의 아이템을 관리하세요' : '반가워요! 다시 만나서 기뻐요'}
            </Text>
