@@ -9,6 +9,7 @@ import {
   Dimensions,
   Animated,
   ToastAndroid,
+  TextInput,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import {supabase, suggestProductInfo} from '../../lib/supabase';
@@ -17,16 +18,13 @@ import {colors} from '../../constants/colors';
 import {typography} from '../../constants/typography';
 import {spacing, radius} from '../../constants/spacing';
 import {formatDateISO} from '../../utils/formatDate';
+import {CATEGORY_NAME_MAP} from '../../constants/categories';
+import {HiddenPageReader} from '../../components/HiddenPageReader';
+import {useImagePicker} from '../../hooks/useImagePicker';
+import {formatPrice, parsePrice} from '../../utils/formatPrice';
 
 const {height: SCREEN_HEIGHT} = Dimensions.get('window');
 
-const CATEGORY_NAME_MAP = {
-  '전자기기': '가전',
-  '생활용품': '잡화',
-  '뷰티': '잡화',
-  '식품': '잡화',
-  '도서': '잡화',
-};
 
 function ShareModalScreen({sharedData, onClose}) {
   const [loading, setLoading] = useState(true);
@@ -39,6 +37,14 @@ function ShareModalScreen({sharedData, onClose}) {
     link: '',
     store_name: '',
   });
+  // 쇼핑몰 원래 제목 (AI 가 정리한 이름과 다를 때만 보여주고, 누르면 되돌린다)
+  const [originalName, setOriginalName] = useState(null);
+  // 앱의 단순 요청이 막힌 쇼핑몰(쿠팡 등)은 보이지 않는 웹뷰로 다시 읽는다
+  const [webRead, setWebRead] = useState(null); // {url, textName}
+  // 자동으로 못 가져온 이미지·가격은 여기서 직접 채운다
+  const {pickImage, uploadImage, previewUri, hasNewImage} = useImagePicker();
+  const [priceInput, setPriceInput] = useState('');
+  const [priceEditing, setPriceEditing] = useState(false);
   const {categories} = useCategories();
 
   const slideAnim = useState(new Animated.Value(SCREEN_HEIGHT))[0];
@@ -131,8 +137,14 @@ function ShareModalScreen({sharedData, onClose}) {
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Linux; Android 13; SM-S908B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        // 브라우저가 페이지를 열 때 보내는 헤더. 없으면 쿠팡은 403, 교보문고는 빈 페이지를 준다
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache',
         ...extraHeaders,
@@ -142,7 +154,27 @@ function ShareModalScreen({sharedData, onClose}) {
     return {html: await response.text(), finalUrl: response.url};
   };
 
+  // 자바스크립트 문자열의 \x3A, \u002F 같은 이스케이프를 푼다
+  const decodeJsString = s =>
+    s
+      .replace(/\\x([0-9a-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+      .replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+
+  // 쿠팡 단축 링크(Deeplink Redirect) 페이지 → 웹으로 이동할 주소. fallback 에 상품 주소가 있으면 그걸 쓴다
+  const extractCoupangTarget = html => {
+    const m = html.match(/redirectWebUrl\s*=\s*'([^']+)'/) || html.match(/redirectWebUrl\s*=\s*"([^"]+)"/);
+    if (!m) return null;
+    const webUrl = decodeJsString(m[1]);
+    try {
+      const fallback = new URL(webUrl).searchParams.get('fallback');
+      if (fallback && /\/(vp|vm)\/products\/\d+/.test(fallback)) return fallback;
+    } catch {}
+    return webUrl;
+  };
+
   const extractRedirectUrl = (html) => {
+    const coupang = extractCoupangTarget(html);
+    if (coupang) return coupang;
     // JS redirect: location.href = "..." / location.replace("...")
     const jsMatch =
       html.match(/location\.(?:href|replace)\s*[=(]\s*["']([^"']+)["']/i) ||
@@ -258,6 +290,17 @@ function ShareModalScreen({sharedData, onClose}) {
       }
     }
 
+    // 페이지 데이터(JSON, 이스케이프된 형태 포함)에서 할인 판매가 우선으로 찾는다
+    const jsonPrice = keys => {
+      for (const key of keys) {
+        const m = html.match(new RegExp(`\\\\?"${key}\\\\?"\\s*:\\s*\\\\?"?([0-9][0-9,]{2,})`));
+        if (m) return parseInt(m[1].replace(/[^0-9]/g, ''), 10) || 0;
+      }
+      return 0;
+    };
+    if (!price && /coupang/.test(url)) price = jsonPrice(['finalPrice', 'salePrice']);
+    if (!price && /kyobobook/.test(url)) price = jsonPrice(['salePrice', 'salePrc']);
+
     // 4) 쿠팡 전용: HTML에서 가격 추출
     if (!price && /coupang/.test(url)) {
       const coupangPrice =
@@ -305,7 +348,8 @@ function ShareModalScreen({sharedData, onClose}) {
       }
     }
 
-    // 8) 범용: HTML 내 가격 패턴 (최후 수단)
+    // 8) 범용: 페이지 데이터의 판매가, HTML 내 가격 패턴 (최후 수단)
+    if (!price) price = jsonPrice(['finalPrice', 'salePrice', 'discountPrice']);
     if (!price) {
       const generalPrice =
         html.match(/itemprop=["']price["'][^>]+content=["']([0-9,]+)["']/i) ||
@@ -315,7 +359,13 @@ function ShareModalScreen({sharedData, onClose}) {
       }
     }
 
-    return {title, image, price};
+    // "로지텍 무선 마우스 - 무선마우스 | 쿠팡", "소년이 온다 - 교보문고" → 쇼핑몰 이름 꼬리 제거
+    const cleanTitle = title
+      .replace(/\s+-\s+[^-|]+\s*\|\s*쿠팡!?$/, '')
+      .replace(/\s*[|\-–:]\s*(쿠팡!?|교보문고|네이버\s?쇼핑|네이버|11번가|G마켓|옥션|SSG\.COM|무신사[^|]*|올리브영|알라딘|YES24|예스24)$/i, '')
+      .trim();
+
+    return {title: cleanTitle || title, image, price};
   };
 
   const fetchOgMetadata = async (url) => {
@@ -350,14 +400,83 @@ function ShareModalScreen({sharedData, onClose}) {
     }
   };
 
+  // 쇼핑몰이 봇 접근을 막으면 "Access Denied" 같은 오류 페이지 제목이 온다 → 상품명으로 쓰지 않는다
+  const isValidTitle = title =>
+    !!title &&
+    title.length > 1 &&
+    !/redirect|리다이렉트|loading|just a moment|checking|access denied|forbidden|not found|robot|captcha|error|오류|차단|접근|로그인|쿠팡!?$/i.test(title);
+
+  // 웹 페이지 주소 중 "상품 페이지"로 볼 수 있는 것 (홈·로그인 화면은 제외)
+  const isProductPage = u => {
+    try {
+      const {pathname} = new URL(u);
+      return /^https?:/i.test(u) && pathname.length > 1 && !/login|signin|member|home$/i.test(pathname);
+    } catch {
+      return false;
+    }
+  };
+
+  // 쿠팡 상품 주소에서 추적용 값은 빼고 상품 식별값만 남긴다
+  const canonicalLink = u => {
+    try {
+      const parsed = new URL(u);
+      if (/coupang\.com$/.test(parsed.hostname) && /\/(vp|vm)\/products\/\d+/.test(parsed.pathname)) {
+        const id = parsed.pathname.match(/products\/(\d+)/)[1];
+        const keep = ['itemId', 'vendorItemId'].filter(k => parsed.searchParams.get(k))
+          .map(k => `${k}=${parsed.searchParams.get(k)}`).join('&');
+        return `https://www.coupang.com/vp/products/${id}${keep ? `?${keep}` : ''}`;
+      }
+    } catch {}
+    return u;
+  };
+
+  const onWebReadResult = result => {
+    const textName = webRead?.textName;
+    setWebRead(null);
+    console.log('[Share] Web read:', result ? {title: result.title?.substring(0, 40), image: result.image ? 'YES' : 'NO', price: result.price, finalUrl: result.finalUrl} : 'timeout');
+    // 공유 문구의 상품명이 가장 정확하고, 없으면 웹 페이지 제목
+    const nextName =
+      textName || (result && isValidTitle(result.title) ? result.title : productInfo.name);
+    if (result) {
+      setProductInfo(prev => ({
+        ...prev,
+        name: nextName,
+        image_url: result.image || prev.image_url,
+        price: result.price || prev.price,
+        // 단축 링크 대신 실제 상품 페이지 주소를 저장 (나중에 열 때 상품으로 바로 이동)
+        link: isProductPage(result.finalUrl) ? canonicalLink(result.finalUrl) : prev.link,
+      }));
+    }
+    applyAiSuggestion(nextName);
+  };
+
+  // LLM으로 카테고리 제안 + 광고 문구를 뺀 상품명 정리
+  const applyAiSuggestion = async name => {
+    if (!name) return;
+    try {
+      const suggestion = await suggestProductInfo(name, {clean: true});
+      const cleanName = suggestion?.clean_name?.trim();
+      if (cleanName && cleanName !== name) {
+        setOriginalName(name);
+        setProductInfo(prev => ({...prev, name: cleanName}));
+      }
+      if (suggestion?.category) {
+        const catName = CATEGORY_NAME_MAP[suggestion.category] || suggestion.category;
+        const cat = categories.find(c => c.name === catName);
+        if (cat) setCategoryId(cat.id);
+      }
+    } catch {}
+  };
+
   const parseSharedData = async (data) => {
     try {
       const text = data.data || '';
       console.log('[Share] Raw shared text:', text);
 
-      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      // URL 에 쓸 수 있는 글자까지만 (공유 문구에서 URL 뒤에 한글이 붙어 오는 경우 대비)
+      const urlRegex = /https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&'*+,;=%]+/g;
       const matches = text.match(urlRegex);
-      const url = matches ? matches[0] : null;
+      const url = matches ? matches[0].replace(/[.,)!?]+$/, '') : null;
 
       if (!url) {
         setProductInfo(prev => ({...prev, name: text || '공유된 아이템'}));
@@ -379,11 +498,7 @@ function ShareModalScreen({sharedData, onClose}) {
       console.log('[Share] OG result:', {title: og.title?.substring(0, 50), image: og.image ? 'YES' : 'NO', price: og.price});
 
       // 이름 우선순위: OG title (유효한 경우) > 공유 텍스트 > 기본값
-      const isOgTitleValid =
-        og.title &&
-        !/redirect|리다이렉트|loading|just a moment|checking/i.test(og.title) &&
-        og.title.length > 1;
-
+      const isOgTitleValid = isValidTitle(og.title);
       const finalName = isOgTitleValid ? og.title : textName || '공유된 상품';
 
       setProductInfo({
@@ -396,15 +511,12 @@ function ShareModalScreen({sharedData, onClose}) {
 
       setLoading(false);
 
-      // LLM으로 카테고리 제안
-      try {
-        const suggestion = await suggestProductInfo(finalName);
-        if (suggestion?.category) {
-          const catName = CATEGORY_NAME_MAP[suggestion.category] || suggestion.category;
-          const cat = categories.find(c => c.name === catName);
-          if (cat) setCategoryId(cat.id);
-        }
-      } catch {}
+      // 이미지나 제목을 못 읽었으면(쿠팡 403·단축 링크 등) 보이지 않는 웹뷰로 다시 읽는다
+      if (!og.image || !isOgTitleValid) {
+        setWebRead({url, textName});
+        return;
+      }
+      applyAiSuggestion(finalName);
     } catch (e) {
       console.error(e);
       setLoading(false);
@@ -423,10 +535,14 @@ function ShareModalScreen({sharedData, onClose}) {
         return;
       }
 
+      // 직접 추가한 사진이 있으면 올리고, 없으면 쇼핑몰 이미지
+      const imageUrl = hasNewImage ? await uploadImage(user.email) : productInfo.image_url || null;
+      const price = priceEditing ? parsePrice(priceInput) : productInfo.price;
+
       const {error} = await supabase.from('items').insert({
         name: productInfo.name,
-        price: productInfo.price,
-        image_url: productInfo.image_url || null,
+        price,
+        image_url: imageUrl,
         item_date: formatDateISO(new Date()),
         store_name: productInfo.store_name || null,
         link: productInfo.link || null,
@@ -464,6 +580,7 @@ function ShareModalScreen({sharedData, onClose}) {
   return (
     <View style={styles.overlay}>
       <Pressable style={styles.dismissArea} onPress={handleClose} />
+      {webRead && <HiddenPageReader url={webRead.url} onResult={onWebReadResult} />}
       <Animated.View
         style={[styles.bottomSheet, {transform: [{translateY: slideAnim}]}]}>
         <View style={styles.handle} />
@@ -483,33 +600,76 @@ function ShareModalScreen({sharedData, onClose}) {
             </View>
           ) : (
             <View style={styles.productBox}>
-              {productInfo.image_url ? (
+              {productInfo.image_url && !previewUri ? (
                 <Image
                   source={{uri: productInfo.image_url}}
                   style={styles.productImage}
                 />
-              ) : (
+              ) : previewUri ? (
+                // 직접 추가한 사진 (누르면 다시 고르기)
+                <Pressable onPress={pickImage}>
+                  <Image source={{uri: previewUri}} style={styles.productImage} />
+                  <Text style={styles.changePhoto}>변경</Text>
+                </Pressable>
+              ) : webRead ? (
                 <View style={styles.imagePlaceholder}>
-                  <Ionicons
-                    name="link-outline"
-                    size={40}
-                    color={colors.border}
-                  />
+                  <ActivityIndicator color={colors.primary} />
                 </View>
+              ) : (
+                // 쇼핑몰 이미지를 못 가져왔을 때: 사진 추가 (상품 캡처 등)
+                <Pressable onPress={pickImage} style={[styles.imagePlaceholder, styles.addPhoto]}>
+                  <Ionicons name="camera-outline" size={24} color={colors.primary} />
+                  <Text style={styles.addPhotoText}>사진 추가</Text>
+                </Pressable>
               )}
               <View style={styles.infoBox}>
                 <Text style={styles.productName} numberOfLines={2}>
                   {productInfo.name}
+                  {originalName ? <Text style={styles.cleanedTag}>  ✨정리됨</Text> : null}
                 </Text>
+                {originalName ? (
+                  <Pressable
+                    onPress={() => {
+                      setProductInfo(prev => ({...prev, name: originalName}));
+                      setOriginalName(null);
+                    }}>
+                    <Text style={styles.originalName} numberOfLines={1}>
+                      원래 제목으로: {originalName}
+                    </Text>
+                  </Pressable>
+                ) : null}
                 {productInfo.store_name ? (
                   <Text style={styles.storeName}>
                     {productInfo.store_name}
                   </Text>
                 ) : null}
-                {productInfo.price > 0 ? (
-                  <Text style={styles.priceText}>
-                    {productInfo.price.toLocaleString()}원
-                  </Text>
+                {productInfo.price > 0 && !priceEditing ? (
+                  <Pressable
+                    onPress={() => {
+                      setPriceInput(formatPrice(productInfo.price));
+                      setPriceEditing(true);
+                    }}>
+                    <Text style={styles.priceText}>
+                      {productInfo.price.toLocaleString()}원
+                    </Text>
+                  </Pressable>
+                ) : !webRead ? (
+                  // 가격을 못 가져왔거나 고치고 싶을 때
+                  <View style={styles.priceRow}>
+                    <TextInput
+                      value={priceInput}
+                      onChangeText={t => {
+                        setPriceInput(formatPrice(t));
+                        setPriceEditing(true);
+                      }}
+                      placeholder="가격 입력 (선택)"
+                      placeholderTextColor={colors.textTertiary}
+                      keyboardType="number-pad"
+                      maxLength={15}
+                      style={styles.priceInput}
+                    />
+                    <Text style={styles.priceUnit}>원</Text>
+                  </View>
                 ) : null}
                 <Text style={styles.link} numberOfLines={1}>
                   {productInfo.link}
@@ -618,6 +778,17 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: spacing.md,
   },
+  cleanedTag: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  originalName: {
+    ...typography.small,
+    color: colors.textTertiary,
+    textDecorationLine: 'underline',
+    marginTop: 2,
+  },
   productName: {
     ...typography.bodyBold,
     color: colors.text,
@@ -627,6 +798,48 @@ const styles = StyleSheet.create({
     ...typography.captionBold,
     color: colors.primary,
     marginBottom: 2,
+  },
+  addPhoto: {
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
+  },
+  addPhotoText: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  changePhoto: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    ...typography.small,
+    color: '#fff',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: radius.sm,
+    paddingHorizontal: 5,
+    overflow: 'hidden',
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  priceInput: {
+    ...typography.bodyBold,
+    color: colors.text,
+    minWidth: 110,
+    paddingVertical: 2,
+    paddingHorizontal: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.primary,
+  },
+  priceUnit: {
+    ...typography.bodyBold,
+    color: colors.text,
+    marginLeft: 4,
   },
   priceText: {
     ...typography.bodyBold,

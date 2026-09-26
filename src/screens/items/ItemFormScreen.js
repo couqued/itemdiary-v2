@@ -27,19 +27,16 @@ import {formatDateKo, formatDateISO} from '../../utils/formatDate';
 import {supabase, suggestProductInfo, identifyItem} from '../../lib/supabase';
 import {addMonths, nextReplacementFrom, formatMonths} from '../../utils/schedule';
 import {onItemSaved} from '../../lib/reminders';
+import {fetchSimilarItems} from '../../lib/similarItems';
+import {SimilarItemsNotice, SimilarItemsToast} from '../../components/SimilarItemsNotice';
+import {CATEGORY_NAME_MAP} from '../../constants/categories';
 
 const WARRANTY_CATEGORIES = ['가전', '가구', '전자기기'];
 // 배터리 점검은 전자기기 성격의 카테고리에서만 제안
 const ELECTRONICS_CATEGORIES = ['가전', '전자기기'];
 const REPLACEMENT_MONTH_OPTIONS = [1, 2, 3, 6, 12, 24];
-const CATEGORY_NAME_MAP = {
-  '전자기기': '가전',
-  '생활용품': '잡화',
-  '뷰티': '잡화',
-  '식품': '잡화',
-  '도서': '잡화',
-};
 const AI_DEBOUNCE_MS = 600;
+// "TV"처럼 두 글자 제목도 있어 2글자부터 (같은 제목은 저장해둔 결과를 써서 호출을 줄인다)
 const AI_MIN_LENGTH = 2;
 
 const toDate = v => (v ? new Date(v) : null);
@@ -63,6 +60,8 @@ function ItemFormScreen({navigation, route}) {
   const [storeName, setStoreName] = useState('');
   const [link, setLink] = useState('');
   const [memo, setMemo] = useState('');
+  const [wishReason, setWishReason] = useState('');
+  const [similarItems, setSimilarItems] = useState([]);
   const [categoryId, setCategoryId] = useState(null);
   const [isWishlist, setIsWishlist] = useState(initialIsWishlist);
   const [showExtra, setShowExtra] = useState(false);
@@ -79,10 +78,14 @@ function ItemFormScreen({navigation, route}) {
   const [isNextReplacementManual, setIsNextReplacementManual] = useState(false);
   const [showReplacement, setShowReplacement] = useState(false);
   const [isPhotoAnalyzing, setIsPhotoAnalyzing] = useState(false);
+  // 사진 인식 실패 안내 {message, canRetry}
+  const [photoAiError, setPhotoAiError] = useState(null);
+  const lastPhotoRef = useRef(null);
   const titleRef = useRef('');
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const lastQueriedRef = useRef('');
+  const suggestionCacheRef = useRef(new Map());
   const aiRequestSeqRef = useRef(0);
 
   // Alerts
@@ -107,6 +110,7 @@ function ItemFormScreen({navigation, route}) {
       setStoreName(existingItem.store_name || '');
       setLink(existingItem.link || '');
       setMemo(existingItem.memo || '');
+      setWishReason(existingItem.wish_reason || '');
       setCategoryId(existingItem.category_id || null);
       setExistingImageUrl(existingItem.image_url || '');
       setWarrantyDate(toDate(existingItem.warranty_date));
@@ -162,6 +166,15 @@ function ItemFormScreen({navigation, route}) {
     const query = name.trim();
     if (isEdit || query.length < AI_MIN_LENGTH || query === lastQueriedRef.current) return;
     lastQueriedRef.current = query;
+    const isUseful = r => r && (r.category || r.warranty_months > 0 || r.replacement_months > 0);
+    // 이미 물어본 이름이면 다시 호출하지 않고 저장해둔 결과를 쓴다 (고쳤다가 되돌린 경우 등)
+    if (suggestionCacheRef.current.has(query)) {
+      aiRequestSeqRef.current++;
+      setIsAiLoading(false);
+      const cached = suggestionCacheRef.current.get(query);
+      setAiSuggestion(isUseful(cached) ? cached : null);
+      return;
+    }
     const seq = ++aiRequestSeqRef.current;
     setIsAiLoading(true);
     let result = null;
@@ -170,11 +183,11 @@ function ItemFormScreen({navigation, route}) {
     } catch (e) {
       result = null;
     }
+    // 실패(null)는 저장하지 않아 다음에 다시 시도할 수 있게
+    if (result && !result.error) suggestionCacheRef.current.set(query, result);
     if (seq !== aiRequestSeqRef.current) return;
     setIsAiLoading(false);
-    setAiSuggestion(
-      result && (result.category || result.warranty_months > 0 || result.replacement_months > 0) ? result : null,
-    );
+    setAiSuggestion(isUseful(result) ? result : null);
   }, [isEdit]);
 
   // 입력을 멈추면 자동으로 제안 요청 (포커스 해제 시에는 즉시)
@@ -195,19 +208,66 @@ function ItemFormScreen({navigation, route}) {
 
   useEffect(() => {
     titleRef.current = title;
+    if (title.trim()) setPhotoAiError(null);
   }, [title]);
 
   // 사진을 고르면 제목이 비어 있을 때만 AI가 물건 이름을 채운다 (이후 제목 기반 제안으로 이어짐)
+  const PHOTO_ERROR = {
+    timeout: '사진 분석이 너무 오래 걸려요.',
+    network: '인터넷 연결을 확인해주세요.',
+    server: 'AI가 잠시 응답하지 않아요.',
+  };
+
   const handlePhotoPicked = async asset => {
     if (isEdit || titleRef.current.trim() || !asset?.base64) return;
+    lastPhotoRef.current = asset;
+    setPhotoAiError(null);
     setIsPhotoAnalyzing(true);
-    const result = await identifyItem(asset.base64, asset.type);
+    // 실패하면 1.5초 뒤 한 번 더 시도
+    let res = await identifyItem(asset.base64, asset.type);
+    if (res.error) {
+      await new Promise(r => setTimeout(r, 1500));
+      res = await identifyItem(asset.base64, asset.type);
+    }
     setIsPhotoAnalyzing(false);
-    const name = result?.name?.trim();
+    if (res.error) {
+      setPhotoAiError({message: `사진 분석에 실패했어요. ${PHOTO_ERROR[res.error] || ''}`.trim(), canRetry: true});
+      return;
+    }
+    const result = res.data || {};
+    const name = result.name?.trim().slice(0, 20);
+    if (!name) {
+      setPhotoAiError({message: '사진에서 물건을 알아보지 못했어요. 제목을 직접 입력해주세요.', canRetry: false});
+      return;
+    }
     if (name && !titleRef.current.trim()) {
-      setTitle(name.slice(0, 20));
+      // 사진 인식이 카테고리·보증·교체까지 한 번에 알려주므로, 제목 기반 제안은 다시 부르지 않는다
+      lastQueriedRef.current = name;
+      aiRequestSeqRef.current++;
+      setTitle(name);
+      if (result.category || result.warranty_months > 0 || result.replacement_months > 0) {
+        setAiSuggestion(result);
+      }
     }
   };
+
+  // 비슷한 물건 안내: 제목·카테고리가 바뀌면 잠시 뒤 기기 안에서 계산 (AI 사용 안 함)
+  useEffect(() => {
+    const name = title.trim();
+    if (name.length < 2) {
+      setSimilarItems([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const found = await fetchSimilarItems({name, categoryId, excludeSeq: existingItem?.seq});
+      if (!cancelled) setSimilarItems(found);
+    }, 700);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [title, categoryId, existingItem?.seq]);
 
   const applyAiSuggestion = () => {
     if (!aiSuggestion) return;
@@ -319,8 +379,10 @@ function ItemFormScreen({navigation, route}) {
       const optionalColumns = {
         battery_check_date: toISO(batteryCheckDate),
         replacement_item: replacementItem.trim() || null,
+        wish_reason: isWishlist ? wishReason.trim() || null : undefined,
       };
       Object.entries(optionalColumns).forEach(([key, value]) => {
+        if (value === undefined) return;
         if (value !== null || (isEdit && key in existingItem)) itemData[key] = value;
       });
 
@@ -405,6 +467,21 @@ function ItemFormScreen({navigation, route}) {
           />
 
           {/* AI 로딩 / 제안 배너 */}
+          {!!photoAiError && !isPhotoAnalyzing && (
+            <View style={[styles.aiBanner, styles.aiBannerError]}>
+              <Text style={[styles.aiBannerText, {color: colors.danger}]}>{photoAiError.message}</Text>
+              <View style={styles.aiBannerActions}>
+                {photoAiError.canRetry && (
+                  <Pressable onPress={() => handlePhotoPicked(lastPhotoRef.current)} style={styles.aiBannerBtn}>
+                    <Text style={styles.aiBannerBtnText}>다시 시도</Text>
+                  </Pressable>
+                )}
+                <Pressable onPress={() => setPhotoAiError(null)} style={styles.aiBannerBtnOutline}>
+                  <Text style={styles.aiBannerBtnOutlineText}>닫기</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
           {isPhotoAnalyzing && (
             <View style={styles.aiBanner}>
               <ActivityIndicator size="small" color={colors.primary} />
@@ -597,6 +674,19 @@ function ItemFormScreen({navigation, route}) {
             maxLength={30}
             returnKeyType="next"
           />
+
+          {/* 찜: 갖고 싶은 이유 (찜 결정 도우미에서 사용) */}
+          {isWishlist && (
+            <Input
+              label="갖고 싶은 이유 (선택)"
+              value={wishReason}
+              onChangeText={setWishReason}
+              placeholder="예: 출퇴근길 소음이 커서 노이즈캔슬링이 필요해요"
+              maxLength={100}
+            />
+          )}
+
+          <SimilarItemsNotice items={similarItems} navigation={navigation} style={{marginBottom: spacing.md}} />
         </View>
 
         {/* 섹션 2: 선택 정보 */}
@@ -648,6 +738,9 @@ function ItemFormScreen({navigation, route}) {
         onConfirm={alertConfig.onConfirm}
         onCancel={alertConfig.onCancel}
       />
+
+      {/* 비슷한 물건이 새로 발견되면 화면 위에 잠깐 알려준다 (아래쪽 안내 줄은 그대로) */}
+      <SimilarItemsToast items={similarItems} navigation={navigation} top={64} />
 
       {loading && <LoadingOverlay />}
     </SafeAreaView>
@@ -822,6 +915,9 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '600',
     marginLeft: 2,
+  },
+  aiBannerError: {
+    backgroundColor: colors.dangerLight,
   },
   aiBanner: {
     flexDirection: 'row',

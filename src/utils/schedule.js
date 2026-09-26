@@ -105,3 +105,18 @@ export const getScheduleBadge = item => {
   if (replaceDays !== null && replaceDays <= 7) return `교체 D-${replaceDays}`;
   return null;
 };
+
+// 보증 상태를 사실 문장으로 (AI 에 넘길 때 사용 — AI 가 보증 여부를 추측하지 않도록)
+export const warrantyStatus = item => {
+  const days = daysUntil(item?.warranty_date);
+  if (days === null) return {label: '보증 정보 없음', text: '', active: null, days: null};
+  if (days < 0) {
+    return {label: '보증 만료', text: `보증 기간이 ${item.warranty_date}에 끝났음`, active: false, days};
+  }
+  return {
+    label: `보증 중 · D-${days}`,
+    text: `보증 기간 안 (만료일 ${item.warranty_date}, ${days}일 남음)`,
+    active: true,
+    days,
+  };
+};

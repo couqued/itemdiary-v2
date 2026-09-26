@@ -11,13 +11,25 @@ export function useItems() {
   const pageRef = useRef(0);
   const hasMoreRef = useRef(true);
 
-  const buildQuery = (query, {sortBy = 'created_at', sortAsc = false, categoryId, search, isWishlist = false} = {}) => {
+  const buildQuery = (query, {sortBy = 'created_at', sortAsc = false, categoryId, search, isWishlist = false, aiFilter} = {}) => {
     query = query.eq('is_wishlist', isWishlist);
 
     if (categoryId) {
       query = query.eq('category_id', categoryId);
     }
-    if (search) {
+    if (aiFilter) {
+      // 자연어 검색: AI 가 만든 조건으로 앱이 직접 조회 (문장 자체로 이름 검색은 하지 않음)
+      const today = new Date().toISOString().slice(0, 10);
+      if (aiFilter.date_from) query = query.gte('item_date', aiFilter.date_from);
+      if (aiFilter.date_to) query = query.lte('item_date', aiFilter.date_to);
+      if (aiFilter.categoryIds?.length) query = query.in('category_id', aiFilter.categoryIds);
+      if (aiFilter.price_min != null) query = query.gte('price', aiFilter.price_min);
+      if (aiFilter.price_max != null) query = query.lte('price', aiFilter.price_max);
+      if (aiFilter.warranty === 'active') query = query.gte('warranty_date', today);
+      if (aiFilter.warranty === 'expired') query = query.lt('warranty_date', today);
+      if (aiFilter.has_replacement) query = query.not('next_replacement_date', 'is', null);
+      if (aiFilter.keyword) query = query.ilike('name', `%${aiFilter.keyword}%`);
+    } else if (search) {
       query = query.ilike('name', `%${search}%`);
     }
     query = query.order(sortBy, {ascending: sortAsc});

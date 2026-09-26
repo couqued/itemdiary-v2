@@ -406,9 +406,25 @@ const buildNudge = now => {
   }];
 };
 
+// 연말 결산: 12월 28일 저녁 7시, 그해 장만한 물건이 있을 때만 한 번
+const buildYearReviewNews = (items, now, limit) => {
+  const year = now.getFullYear();
+  const when = new Date(year, 11, 28, 19, 0, 0, 0);
+  if (when <= now || when.getTime() > limit) return [];
+  const count = items.filter(i => !i.is_wishlist && String(i.item_date || '').startsWith(String(year))).length;
+  if (!count) return [];
+  return [{
+    id: `news-yearreview-${year}`, when, channel: 'news',
+    title: `${year}년 결산이 준비됐어요 ✨`,
+    body: `올해 장만한 물건 ${count}개와 챙긴 일을 한눈에 확인해보세요.`,
+    data: {type: 'year_review', year: String(year)},
+  }];
+};
+
 export const buildNews = (items, now = new Date()) => {
   const limit = now.getTime() + NEWS_WINDOW_DAYS * DAY_MS;
   return [
+    ...buildYearReviewNews(items, now, limit),
     ...buildWishNews(items, now, limit),
     ...buildAnniversaryNews(items, now, limit),
     ...buildMonthlySummary(items, now, limit),
@@ -567,6 +583,27 @@ const snoozeUntilTomorrow = async notification => {
 const cancelSnoozes = async seq => {
   const ids = (await notifee.getTriggerNotificationIds()).filter(id => id.startsWith(`snooze-item-${seq}-`));
   if (ids.length) await notifee.cancelTriggerNotifications(ids);
+};
+
+// 찜 결정 도우미의 "한 달 뒤 다시": days 일 뒤 오전 11시에 이 찜을 다시 알려준다
+// (snooze- 접두사라 전체 동기화에도 지워지지 않는다. 같은 물건은 하나만 유지)
+export const remindWishLater = async (item, days = 30) => {
+  await requestReminderPermission();
+  await ensureChannels();
+  const when = at(addDays(new Date(), days), 11);
+  await notifee.createTriggerNotification(
+    toNotification({
+      id: `snooze-wish-${item.seq}`,
+      channel: 'news',
+      title: `${item.name}, 다시 생각해볼 시간이에요`,
+      body: '한 달 전 "한 달 뒤 다시"를 눌렀던 찜이에요. 이제 결정해볼까요?',
+      data: {type: 'item', seq: String(item.seq), ...(item.link ? {link: item.link} : {})},
+      buttons: [BTN.wishBought, ...(item.link ? [BTN.price] : [])],
+      largeIcon: item.image_url,
+    }),
+    {type: TriggerType.TIMESTAMP, timestamp: when.getTime(), alarmManager: {type: AlarmType.SET_AND_ALLOW_WHILE_IDLE}},
+  );
+  return when;
 };
 
 // 배터리 점검 완료: 다음 점검일을 1년 뒤로

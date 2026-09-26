@@ -26,6 +26,10 @@ import {ItemCard} from '../../components/ItemCard';
 import {CategoryChips} from '../../components/CategoryChips';
 import {EmptyState} from '../../components/ui/EmptyState';
 import {LoadingOverlay} from '../../components/ui/LoadingOverlay';
+import {callAi, aiErrorText, todayISO} from '../../lib/ai';
+import {looksLikeSentence, conditionChips, removeCondition} from '../../lib/searchIntent';
+import {resolveCategoryId} from '../../constants/categories';
+import {ClipboardLinkPrompt} from '../../components/ClipboardLinkPrompt';
 
 const SORT_OPTIONS = [
   {key: 'created_at', label: '최신순', asc: false},
@@ -45,6 +49,10 @@ function ListScreen({navigation}) {
   const [searchText, setSearchText] = useState('');
   const [categoryId, setCategoryId] = useState(null);
   const [isWishlistTab, setIsWishlistTab] = useState(false);
+  // 자연어 검색: AI 가 만든 조건 (null 이면 평소 이름 검색)
+  const [aiFilter, setAiFilter] = useState(null);
+  const [aiSearching, setAiSearching] = useState(false);
+  const [aiSearchError, setAiSearchError] = useState(null);
 
   // Speed Dial State
   const [isExpanded, setIsExpanded] = useState(false);
@@ -61,8 +69,8 @@ function ListScreen({navigation}) {
     setIsExpanded(!isExpanded);
   };
 
-  const filtersRef = useRef({sortIndex, categoryId, isWishlistTab, searchText});
-  filtersRef.current = {sortIndex, categoryId, isWishlistTab, searchText};
+  const filtersRef = useRef({sortIndex, categoryId, isWishlistTab, searchText, aiFilter});
+  filtersRef.current = {sortIndex, categoryId, isWishlistTab, searchText, aiFilter};
 
   const getOptions = useCallback(
     (overrides = {}) => {
@@ -74,6 +82,7 @@ function ListScreen({navigation}) {
         search: overrides.search !== undefined ? overrides.search : current.searchText,
         categoryId: overrides.catId !== undefined ? overrides.catId : current.categoryId,
         isWishlist: overrides.isWishlist !== undefined ? overrides.isWishlist : current.isWishlistTab,
+        aiFilter: overrides.aiFilter !== undefined ? overrides.aiFilter : current.aiFilter,
       };
     },
     [],
@@ -94,7 +103,54 @@ function ListScreen({navigation}) {
 
   const handleSearchChange = text => {
     setSearchText(text);
+    // 새로 입력하면 AI 조건은 풀고 평소 이름 검색으로
+    if (aiFilter) setAiFilter(null);
+    setAiSearchError(null);
     debouncedSearch(text);
+  };
+
+  // 「✨ AI로 찾기」: 이때만 AI 호출 → 조건으로 바꿔 앱이 검색
+  const runAiSearch = async () => {
+    const query = searchText.trim();
+    if (!query || aiSearching) return;
+    debouncedSearch.cancel();
+    setAiSearching(true);
+    setAiSearchError(null);
+    const {data, error} = await callAi('search', {
+      query,
+      today: todayISO(),
+      categories: categories.map(c => c.name),
+    });
+    setAiSearching(false);
+    if (error) {
+      setAiSearchError(aiErrorText(error));
+      return;
+    }
+    const filter = {
+      date_from: data?.date_from || null,
+      date_to: data?.date_to || null,
+      categoryIds: (data?.categories || []).map(n => resolveCategoryId(categories, n)).filter(id => id != null),
+      price_min: data?.price_min ?? null,
+      price_max: data?.price_max ?? null,
+      warranty: data?.warranty || null,
+      has_replacement: data?.has_replacement || null,
+      keyword: data?.keyword || null,
+    };
+    const nextFilter = conditionChips(filter).length ? filter : null;
+    if (!nextFilter) {
+      setAiSearchError('조건을 찾지 못했어요. 다르게 적어보세요.');
+      return;
+    }
+    const wish = typeof data?.is_wishlist === 'boolean' ? data.is_wishlist : isWishlistTab;
+    setAiFilter(nextFilter);
+    if (wish !== isWishlistTab) setIsWishlistTab(wish); // 탭 전환 시 아래 effect 가 다시 조회
+    else fetchItems(getOptions({aiFilter: nextFilter}));
+  };
+
+  const removeAiChip = key => {
+    const next = removeCondition(aiFilter, key);
+    setAiFilter(next);
+    fetchItems(getOptions({aiFilter: next, search: next ? '' : searchText}));
   };
 
   const onSubmitSearch = () => {
@@ -165,9 +221,16 @@ function ListScreen({navigation}) {
 
   const onClearSearch = () => {
     setSearchText('');
+    setAiFilter(null);
+    setAiSearchError(null);
     debouncedSearch.cancel();
-    fetchItems(getOptions({search: ''}));
+    fetchItems(getOptions({search: '', aiFilter: null}));
   };
+
+  const showAiSuggest =
+    !aiFilter && !aiSearching && !loading && searchText.trim().length > 0 &&
+    looksLikeSentence(searchText, {nameResultCount: items.length});
+  const aiChips = conditionChips(aiFilter, id => categories.find(c => c.id === id)?.name || '카테고리');
 
   const handleEndReached = () => {
     fetchMore(getOptions());
@@ -182,9 +245,9 @@ function ListScreen({navigation}) {
     navigation.navigate('ItemForm', {is_wishlist: isWishlistTab});
   };
 
-  const goBarcodeScan = () => {
+  const goReceiptImport = () => {
     toggleSpeedDial();
-    navigation.navigate('BarcodeScan', {is_wishlist: isWishlistTab});
+    navigation.navigate('ReceiptImport');
   };
 
   const renderItem = useCallback(
@@ -215,7 +278,7 @@ function ListScreen({navigation}) {
   );
 
   // Animation Styles
-  const barcodeStyle = {
+  const manualStyle = {
     transform: [
       {scale: animation},
       {
@@ -228,7 +291,7 @@ function ListScreen({navigation}) {
     opacity: animation,
   };
 
-  const manualStyle = {
+  const receiptStyle = {
     transform: [
       {scale: animation},
       {
@@ -262,6 +325,15 @@ function ListScreen({navigation}) {
           </Pressable>
         </View>
 
+        {/* 복사한 쇼핑몰 링크 → 찜 추가 안내 */}
+        <ClipboardLinkPrompt
+          onAdded={() => {
+            // 찜 탭으로 옮겨서 방금 추가한 물건이 보이게
+            if (isWishlistTab) fetchItems(getOptions());
+            else setIsWishlistTab(true);
+          }}
+        />
+
         <View style={styles.searchBar}>
           <Ionicons name="search-outline" size={20} color={colors.textTertiary} style={{marginRight: spacing.sm}} />
           <TextInput
@@ -275,11 +347,47 @@ function ListScreen({navigation}) {
             autoCapitalize="none"
           />
           {searchText.length > 0 && (
+            <Pressable onPress={runAiSearch} hitSlop={8} style={{marginRight: spacing.sm}}>
+              <Text style={styles.aiIcon}>✨</Text>
+            </Pressable>
+          )}
+          {searchText.length > 0 && (
             <Pressable onPress={onClearSearch}>
               <Ionicons name="close-circle" size={20} color={colors.textTertiary} />
             </Pressable>
           )}
         </View>
+
+        {/* 자연어 검색: 문장처럼 보이면 버튼만 (AI 호출 전) */}
+        {showAiSuggest && (
+          <Pressable onPress={runAiSearch} style={styles.aiSuggest}>
+            <View style={{flex: 1}}>
+              <Text style={styles.aiSuggestTitle}>문장으로 찾고 계신가요?</Text>
+              <Text style={styles.aiSuggestSub}>AI가 조건으로 바꿔서 찾아드려요</Text>
+            </View>
+            <View style={styles.aiSuggestBtn}>
+              <Text style={styles.aiSuggestBtnText}>✨ AI로 찾기</Text>
+            </View>
+          </Pressable>
+        )}
+        {aiSearching && (
+          <View style={styles.aiSuggest}>
+            <Text style={styles.aiSuggestSub}>✨ AI가 검색 조건을 만드는 중...</Text>
+          </View>
+        )}
+        {!!aiSearchError && <Text style={styles.aiError}>{aiSearchError}</Text>}
+        {!!aiFilter && (
+          <View style={styles.aiChips}>
+            <Text style={styles.aiChipsLabel}>✨ AI가 이렇게 이해했어요</Text>
+            <View style={styles.aiChipsRow}>
+              {aiChips.map(chip => (
+                <Pressable key={chip.key} onPress={() => removeAiChip(chip.key)} style={styles.aiChip}>
+                  <Text style={styles.aiChipText}>{chip.label} ✕</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
 
         <CategoryChips
           categories={categories}
@@ -339,21 +447,22 @@ function ListScreen({navigation}) {
       )}
 
       {/* Sub Buttons */}
+      {!isWishlistTab && (
+        <Animated.View style={[styles.subFabContainer, receiptStyle]} pointerEvents={isExpanded ? 'auto' : 'none'}>
+          <Text style={[styles.subFabLabel, styles.subFabLabelNew]}>영수증·결제내역</Text>
+          <Pressable
+            onPress={goReceiptImport}
+            style={[styles.subFab, {backgroundColor: colors.surface}]}>
+            <Ionicons name="receipt-outline" size={24} color={colors.primary} />
+          </Pressable>
+        </Animated.View>
+      )}
       <Animated.View style={[styles.subFabContainer, manualStyle]}>
         <Text style={styles.subFabLabel}>직접 등록</Text>
         <Pressable
           onPress={goWriteManual}
           style={[styles.subFab, {backgroundColor: colors.surface}]}>
           <Ionicons name="create-outline" size={24} color={colors.primary} />
-        </Pressable>
-      </Animated.View>
-
-      <Animated.View style={[styles.subFabContainer, barcodeStyle]}>
-        <Text style={styles.subFabLabel}>바코드 스캔</Text>
-        <Pressable
-          onPress={goBarcodeScan}
-          style={[styles.subFab, {backgroundColor: colors.surface}]}>
-          <Ionicons name="barcode-outline" size={24} color={colors.primary} />
         </Pressable>
       </Animated.View>
 
@@ -496,6 +605,32 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     marginRight: spacing.sm,
     overflow: 'hidden',
+  },
+  aiIcon: {fontSize: 17},
+  aiSuggest: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing.md,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.primaryLight,
+  },
+  aiSuggestTitle: {...typography.captionBold, color: colors.primaryDark},
+  aiSuggestSub: {...typography.small, color: colors.primaryDark},
+  aiSuggestBtn: {backgroundColor: colors.primary, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: 6},
+  aiSuggestBtnText: {...typography.small, fontWeight: '700', color: colors.textInverse},
+  aiError: {...typography.small, color: colors.danger, marginHorizontal: spacing.md, marginTop: spacing.xs},
+  aiChips: {marginHorizontal: spacing.md, marginTop: spacing.xs, gap: 4},
+  aiChipsLabel: {...typography.small, color: colors.primaryDark},
+  aiChipsRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 6},
+  aiChip: {backgroundColor: '#E0EAFF', borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 4},
+  aiChipText: {...typography.small, color: '#1E40AF', fontWeight: '600'},
+  subFabLabelNew: {
+    backgroundColor: '#FFF4DB',
+    color: '#8A5A00',
+    fontWeight: '700',
   },
   tabContainer: {
     flexDirection: 'row',

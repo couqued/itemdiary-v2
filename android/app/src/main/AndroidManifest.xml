@@ -42,7 +42,7 @@
             android:name="com.keep_product.ShareActivity"
             android:theme="@style/Theme.Transparent"
             android:exported="true"
-            android:label="아이템모리에 찜하기"
+            android:label="아이템북에 찜하기"
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:taskAffinity=""

@@ -24,7 +24,10 @@ public class MainActivity extends ReactActivity {
   protected void onCreate(Bundle savedInstanceState) {
     EdgeToEdge.enable(this);
     SplashScreen.show(this);
-    super.onCreate(savedInstanceState);
+    // 저장된 화면 상태를 복원하지 않는다 (react-native-screens 요구사항).
+    // 백그라운드에서 안드로이드가 앱 프로세스를 정리한 뒤 다시 열 때, 복원을 시도하면
+    // ScreenFragment 생성 오류로 앱이 바로 꺼진다. 화면 상태는 JS(내비게이션)가 다시 만든다.
+    super.onCreate(null);
   }
 
   /**

@@ -10,9 +10,12 @@ import ForgotPasswordScreen from '../signup/ForgotPasswordScreen';
 import ResetPasswordScreen from '../signup/ResetPasswordScreen';
 import TabNavigator from './TabNavigator';
 import ItemFormScreen from '../screens/items/ItemFormScreen';
-import BarcodeScanScreen from '../screens/items/BarcodeScanScreen';
 import DetailScreen from '../screens/items/DetailScreen';
 import UserQuitScreen from '../screens/main/UserQuitScreen';
+import ReceiptImportScreen from '../screens/items/ReceiptImportScreen';
+import RepairHelperScreen from '../screens/items/RepairHelperScreen';
+import SellPostScreen from '../screens/items/SellPostScreen';
+import YearReviewScreen from '../screens/main/YearReviewScreen';
 import { supabase } from '../lib/supabase';
 import {
   syncAllReminders,
@@ -78,7 +81,9 @@ function RootNavigator() {
         return;
       }
       const data = event.data || {};
-      if (data.type === 'nudge') {
+      if (data.type === 'year_review') {
+        navigation.navigate('YearReview', {year: Number(data.year) || undefined});
+      } else if (data.type === 'nudge') {
         navigation.navigate('ItemForm');
       } else if (data.type === 'item' && data.seq) {
         const {data: item} = await supabase.from('items').select('*').eq('seq', Number(data.seq)).single();
@@ -155,9 +160,12 @@ function RootNavigator() {
               component={ItemFormScreen}
               options={{presentation: 'modal'}}
             />
-            <Stack.Screen name="BarcodeScan" component={BarcodeScanScreen} />
             <Stack.Screen name="Detail" component={DetailScreen} />
             <Stack.Screen name="Quit" component={UserQuitScreen} />
+            <Stack.Screen name="ReceiptImport" component={ReceiptImportScreen} options={{presentation: 'modal'}} />
+            <Stack.Screen name="RepairHelper" component={RepairHelperScreen} options={{presentation: 'modal'}} />
+            <Stack.Screen name="SellPost" component={SellPostScreen} options={{presentation: 'modal'}} />
+            <Stack.Screen name="YearReview" component={YearReviewScreen} />
           </>
         )
       ) : (

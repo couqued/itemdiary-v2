@@ -23,6 +23,7 @@ import {formatPrice} from '../../utils/formatPrice';
 import {formatDateKo, formatDateISO} from '../../utils/formatDate';
 import {addMonths, getScheduleRows} from '../../utils/schedule';
 import {syncItemReminders, setItemMuted} from '../../lib/reminders';
+import {WishDecisionCard} from '../../components/WishDecisionCard';
 import {supabase} from '../../lib/supabase';
 
 function DetailScreen({navigation, route}) {
@@ -225,6 +226,33 @@ function DetailScreen({navigation, route}) {
               <Switch value={!muted} onValueChange={onToggleNotify} trackColor={{true: colors.primary}} />
             </View>
           )}
+
+          {/* 찜: 구입하러 가기 + 결정 도우미 */}
+          {item.is_wishlist && (
+            <WishDecisionCard
+              item={item}
+              onPurchase={() => setPurchaseVisible(true)}
+              onDelete={() => setDeleteVisible(true)}
+            />
+          )}
+
+          {/* 내 물건: AI 도우미 */}
+          {!item.is_wishlist && (
+            <View style={styles.toolRow}>
+              <Pressable
+                onPress={() => navigation.navigate('RepairHelper', {item})}
+                style={({pressed}) => [styles.toolBtn, pressed && {opacity: 0.7}]}>
+                <Ionicons name="construct-outline" size={18} color={colors.primary} />
+                <Text style={styles.toolText}>고장·문의 도우미</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => navigation.navigate('SellPost', {item})}
+                style={({pressed}) => [styles.toolBtn, pressed && {opacity: 0.7}]}>
+                <Ionicons name="pricetags-outline" size={18} color={colors.primary} />
+                <Text style={styles.toolText}>판매 글 만들기</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
       </ScrollView>
 
@@ -295,6 +323,25 @@ function InfoRow({icon, label, value, valueStyle}) {
 }
 
 const styles = StyleSheet.create({
+  toolRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  toolBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm + 4,
+    borderRadius: radius.lg,
+    backgroundColor: colors.primaryLight,
+  },
+  toolText: {
+    ...typography.captionBold,
+    color: colors.primaryDark,
+  },
   notifyRow: {
     flexDirection: 'row',
     alignItems: 'center',

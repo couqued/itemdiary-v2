@@ -20,7 +20,9 @@ import {supabase} from '../../lib/supabase';
 import {CustomAlert} from '../../components/ui';
 import {isRemindersEnabled, setRemindersEnabled, isNewsEnabled, setNewsEnabled} from '../../lib/reminders';
 import {SHOW_NOTIFICATION_TEST} from '../../dev/flags';
+import {defaultReviewYear} from './YearReviewScreen';
 import {NotificationTestPanel} from '../../dev/NotificationTestPanel';
+import {AiUsagePanel} from '../../dev/AiUsagePanel';
 
 function ProfileScreen({navigation}) {
   const [remindersOn, setRemindersOn] = useState(true);
@@ -101,6 +103,23 @@ function ProfileScreen({navigation}) {
           <Text style={styles.email}>{userEmail}</Text>
         </View>
 
+        {/* 연말 결산 (12월·1월에는 강조) */}
+        {(() => {
+          const reviewYear = defaultReviewYear();
+          const month = new Date().getMonth();
+          const highlight = month === 11 || month === 0;
+          return (
+            <Pressable
+              onPress={() => navigation.navigate('YearReview', {year: reviewYear})}
+              style={({pressed}) => [styles.reviewCard, highlight && styles.reviewCardHi, pressed && {opacity: 0.85}]}>
+              <Text style={[styles.reviewTitle, highlight && {color: colors.textInverse}]}>✨ {reviewYear} 결산 보기</Text>
+              <Text style={[styles.reviewSub, highlight && {color: 'rgba(255,255,255,0.85)'}]}>
+                올해 장만한 물건과 챙긴 일을 한눈에
+              </Text>
+            </Pressable>
+          );
+        })()}
+
         {/* 통계 카드 */}
         <View style={styles.statsRow}>
           <StatCard label="총 아이템" value={`${stats.total}개`} icon="cube-outline" />
@@ -169,6 +188,7 @@ function ProfileScreen({navigation}) {
           </View>
         </View>
 
+        {SHOW_NOTIFICATION_TEST && <AiUsagePanel />}
         {SHOW_NOTIFICATION_TEST && <NotificationTestPanel />}
       </ScrollView>
 
@@ -219,6 +239,25 @@ function MenuItem({icon, label, onPress, danger}) {
 }
 
 const styles = StyleSheet.create({
+  reviewCard: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.primaryLight,
+  },
+  reviewCardHi: {
+    backgroundColor: '#3B6EF5',
+  },
+  reviewTitle: {
+    ...typography.bodyBold,
+    color: colors.primaryDark,
+  },
+  reviewSub: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,
